@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly PROD: boolean
   readonly DEV: boolean
   readonly SSR: boolean
+  readonly VITE_CLERK_PUBLISHABLE_KEY?: string
 }
 
 interface ImportMeta {

@@ -1,11 +1,13 @@
-import { Button } from "@/components/ui/button"
+import type { ReactNode } from "react"
+
 import { PageContainer } from "@/components/shared/page-container"
 
 type AppHeaderProps = {
   onNavigateHome: () => void
+  accountControl: ReactNode
 }
 
-function AppHeader({ onNavigateHome }: AppHeaderProps) {
+function AppHeader({ onNavigateHome, accountControl }: AppHeaderProps) {
   return (
     <header className="h-16 border-b border-border bg-surface" data-testid="app-header">
       <PageContainer className="flex h-full items-center justify-between gap-4">
@@ -19,15 +21,7 @@ function AppHeader({ onNavigateHome }: AppHeaderProps) {
         >
           Catalog Margin Guard
         </a>
-        <Button
-          type="button"
-          variant="ghost"
-          size="small"
-          disabled
-          title="Authentication will be added in a later implementation phase"
-        >
-          Sign in
-        </Button>
+        {accountControl}
       </PageContainer>
     </header>
   )

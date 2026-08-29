@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 
 import { AppHeader } from "@/components/shared/app-header"
+import { AuthHeaderControl } from "@/features/auth/auth-header-control"
 import { LandingPage } from "@/features/landing/landing-page"
 import { SetupShell } from "@/features/setup/setup-shell"
 
@@ -33,7 +34,10 @@ function App() {
       >
         Skip to main content
       </a>
-      <AppHeader onNavigateHome={() => navigate("/")} />
+      <AppHeader
+        onNavigateHome={() => navigate("/")}
+        accountControl={<AuthHeaderControl />}
+      />
       {route === "landing" ? (
         <LandingPage onStart={() => navigate("/check")} />
       ) : (

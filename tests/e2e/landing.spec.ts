@@ -26,3 +26,23 @@ test("landing page has no horizontal overflow on a mobile viewport", async ({ pa
   expect(hasOverflow).toBe(false)
   await expect(page.getByRole("button", { name: "Check My Catalog" })).toBeVisible()
 })
+
+test("sign-in stays in context and explains the privacy boundary", async ({ page }) => {
+  await page.goto("/")
+  const landingHeading = page.locator("#main-content h1")
+
+  await expect(landingHeading).toHaveText("Find products quietly eating your margin.")
+
+  await page.getByRole("button", { name: "Sign in" }).click()
+
+  await expect(
+    page.getByText("Signing in only creates your Catalog Margin Guard account."),
+  ).toBeVisible()
+  await expect(
+    page.getByText(
+      "Your supplier and catalog files remain on your computer and are not uploaded.",
+    ),
+  ).toBeVisible()
+  await expect(landingHeading).toBeAttached()
+  expect(new URL(page.url()).pathname).toBe("/")
+})
