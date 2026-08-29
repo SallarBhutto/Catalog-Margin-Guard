@@ -3,18 +3,25 @@ import { ArrowLeft, FileSpreadsheet, LockKeyhole } from "lucide-react"
 import { PageContainer } from "@/components/shared/page-container"
 import { PrivacyNotice } from "@/components/shared/privacy-notice"
 import { Button } from "@/components/ui/button"
+import { EngineReadiness } from "@/features/setup/engine-readiness"
+import { duckDBEngine } from "@/lib/duckdb"
 
 type SetupShellProps = {
   onBack: () => void
 }
 
 function SetupShell({ onBack }: SetupShellProps) {
+  const leaveWorkflow = async () => {
+    await duckDBEngine.dispose()
+    onBack()
+  }
+
   return (
     <main id="main-content" className="min-h-[calc(100svh-4rem)] py-10 sm:py-12">
       <PageContainer width="app">
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => void leaveWorkflow()}
           className="inline-flex min-h-10 items-center gap-2 rounded-md text-sm font-medium text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
@@ -55,6 +62,10 @@ function SetupShell({ onBack }: SetupShellProps) {
                 phase.
               </p>
             </div>
+          </div>
+
+          <div className="mt-6 border-t border-border pt-5">
+            <EngineReadiness />
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
