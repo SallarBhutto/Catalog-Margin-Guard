@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Columns3 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronDown, Columns3 } from "lucide-react"
 
 import {
   Table,
@@ -142,56 +142,68 @@ function FileInspectionPanel({ role, result }: FileInspectionPanelProps) {
         </div>
       </div>
 
-      <div className="p-5 sm:p-6">
-        <div className="mb-3">
-          <h4 className="text-[13px] font-semibold text-text-primary">File preview</h4>
-          <p className="mt-1 text-xs text-text-muted">Showing a sample from this file.</p>
-        </div>
-        <div className="rounded-md border border-border">
-          <Table aria-label={`${result.metadata.name} file preview`}>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                {result.columns.map((column) => (
-                  <TableHead
-                    key={column.sourceIndex}
-                    className="min-w-36 whitespace-nowrap"
-                  >
-                    {column.name}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {result.preview.length > 0 ? (
-                result.preview.map((row, rowIndex) => (
-                  <TableRow key={rowIndex}>
-                    {result.columns.map((column) => (
-                      <TableCell
-                        key={column.sourceIndex}
-                        className="max-w-64 truncate whitespace-nowrap text-[13px] text-text-secondary"
-                        title={row[column.name] ?? ""}
-                      >
-                        {row[column.name] ?? (
-                          <span className="text-text-disabled">—</span>
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={result.columns.length}
-                    className="h-20 text-center text-xs text-text-muted"
-                  >
-                    The file has headers but no data rows to preview.
-                  </TableCell>
+      <details className="group" data-testid={`${role}-preview-disclosure`}>
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-[13px] font-semibold text-text-primary outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset sm:px-6 [&::-webkit-details-marker]:hidden">
+          <span>
+            File preview{" "}
+            <span className="font-normal text-text-muted">
+              · {result.preview.length} sample{" "}
+              {result.preview.length === 1 ? "row" : "rows"}
+            </span>
+          </span>
+          <ChevronDown
+            className="size-4 shrink-0 text-text-muted transition-transform group-open:rotate-180"
+            aria-hidden="true"
+          />
+        </summary>
+        <div className="border-t border-border p-5 sm:p-6">
+          <p className="mb-3 text-xs text-text-muted">Showing a sample from this file.</p>
+          <div className="rounded-md border border-border">
+            <Table aria-label={`${result.metadata.name} file preview`}>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  {result.columns.map((column) => (
+                    <TableHead
+                      key={column.sourceIndex}
+                      className="min-w-36 whitespace-nowrap"
+                    >
+                      {column.name}
+                    </TableHead>
+                  ))}
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {result.preview.length > 0 ? (
+                  result.preview.map((row, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      {result.columns.map((column) => (
+                        <TableCell
+                          key={column.sourceIndex}
+                          className="max-w-64 truncate whitespace-nowrap text-[13px] text-text-secondary"
+                          title={row[column.name] ?? ""}
+                        >
+                          {row[column.name] ?? (
+                            <span className="text-text-disabled">—</span>
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      colSpan={result.columns.length}
+                      className="h-20 text-center text-xs text-text-muted"
+                    >
+                      The file has headers but no data rows to preview.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
-      </div>
+      </details>
     </article>
   )
 }

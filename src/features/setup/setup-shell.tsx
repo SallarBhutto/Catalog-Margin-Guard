@@ -1,4 +1,5 @@
 import { ArrowLeft, CheckCircle2 } from "lucide-react"
+import { useEffect, useMemo, useReducer } from "react"
 
 import { PageContainer } from "@/components/shared/page-container"
 import { PrivacyNotice } from "@/components/shared/privacy-notice"
@@ -6,7 +7,15 @@ import { FileInspectionPanel } from "@/features/file-inspection/file-inspection-
 import { fileInspectionService } from "@/features/file-inspection/file-inspection-service"
 import { useFileInspection } from "@/features/file-inspection/use-file-inspection"
 import { FilePicker } from "@/features/file-selection/file-picker"
+import {
+  analysisSetupReducer,
+  createDefaultAnalysisSetupDraft,
+  validateAnalysisConfiguration,
+} from "@/features/setup/analysis-configuration"
+import { ColumnMappingSection } from "@/features/setup/column-mapping-section"
 import { EngineReadiness } from "@/features/setup/engine-readiness"
+import { MarginSettingsSection } from "@/features/setup/margin-settings-section"
+import { SetupReadinessSummary } from "@/features/setup/setup-readiness-summary"
 import { duckDBEngine } from "@/lib/duckdb"
 
 type SetupShellProps = {
@@ -16,6 +25,11 @@ type SetupShellProps = {
 function SetupShell({ onBack }: SetupShellProps) {
   const supplier = useFileInspection("supplier")
   const catalog = useFileInspection("catalog")
+  const [setupDraft, dispatch] = useReducer(
+    analysisSetupReducer,
+    undefined,
+    createDefaultAnalysisSetupDraft,
+  )
 
   const leaveWorkflow = async () => {
     await fileInspectionService.releaseAll()
@@ -32,6 +46,49 @@ function SetupShell({ onBack }: SetupShellProps) {
       ? catalog.state.result
       : null
   const bothFilesReady = Boolean(supplierResult && catalogResult)
+  const supplierColumns = useMemo(
+    () => supplierResult?.columns.map((column) => column.name) ?? [],
+    [supplierResult],
+  )
+  const catalogColumns = useMemo(
+    () => catalogResult?.columns.map((column) => column.name) ?? [],
+    [catalogResult],
+  )
+
+  useEffect(() => {
+    if (!supplierResult) return
+    dispatch({
+      type: "supplier-inspected",
+      suggestions: supplierResult.suggestions,
+    })
+  }, [supplierResult])
+
+  useEffect(() => {
+    if (!catalogResult) return
+    dispatch({
+      type: "catalog-inspected",
+      suggestions: catalogResult.suggestions,
+    })
+  }, [catalogResult])
+
+  const validation = useMemo(
+    () =>
+      validateAnalysisConfiguration(setupDraft, {
+        supplier: { ready: Boolean(supplierResult), columns: supplierColumns },
+        catalog: { ready: Boolean(catalogResult), columns: catalogColumns },
+      }),
+    [catalogColumns, catalogResult, setupDraft, supplierColumns, supplierResult],
+  )
+
+  const chooseSupplierFile = (file: File) => {
+    dispatch({ type: "supplier-file-changed" })
+    void supplier.chooseFile(file)
+  }
+
+  const chooseCatalogFile = (file: File) => {
+    dispatch({ type: "catalog-file-changed" })
+    void catalog.chooseFile(file)
+  }
 
   return (
     <main id="main-content" className="min-h-[calc(100svh-4rem)] py-10 sm:py-12">
@@ -91,14 +148,14 @@ function SetupShell({ onBack }: SetupShellProps) {
               title="Supplier file"
               prompt="Choose Supplier File"
               state={supplier.state}
-              onChoose={(file) => void supplier.chooseFile(file)}
+              onChoose={chooseSupplierFile}
             />
             <FilePicker
               role="catalog"
               title="Current catalog"
               prompt="Choose Catalog File"
               state={catalog.state}
-              onChoose={(file) => void catalog.chooseFile(file)}
+              onChoose={chooseCatalogFile}
             />
           </div>
 
@@ -112,20 +169,53 @@ function SetupShell({ onBack }: SetupShellProps) {
                 <span className="font-semibold text-text-primary">
                   Both files are ready.
                 </span>{" "}
-                Their detected columns can be used in the next column-mapping phase.
+                Confirm the suggested mappings and configure your margin rules below.
               </p>
             </div>
           )}
         </section>
 
+        {supplierResult && catalogResult && (
+          <>
+            <ColumnMappingSection
+              draft={setupDraft}
+              validation={validation}
+              supplierColumns={supplierColumns}
+              catalogColumns={catalogColumns}
+              supplierSuggestions={supplierResult.suggestions}
+              catalogSuggestions={catalogResult.suggestions}
+              dispatch={dispatch}
+            />
+            <MarginSettingsSection
+              draft={setupDraft}
+              validation={validation}
+              dispatch={dispatch}
+            />
+            <SetupReadinessSummary validation={validation} />
+          </>
+        )}
+
         {(supplierResult || catalogResult) && (
-          <section className="mt-6 space-y-5" aria-label="Inspected files">
-            {supplierResult && (
-              <FileInspectionPanel role="supplier" result={supplierResult} />
-            )}
-            {catalogResult && (
-              <FileInspectionPanel role="catalog" result={catalogResult} />
-            )}
+          <section className="mt-8" aria-labelledby="file-review-heading">
+            <div className="mb-4">
+              <h2
+                id="file-review-heading"
+                className="text-[15px] font-semibold text-text-primary"
+              >
+                Review inspected files
+              </h2>
+              <p className="mt-1 text-xs leading-[18px] text-text-muted">
+                Use these compact previews to verify source columns and sample values.
+              </p>
+            </div>
+            <div className="space-y-5">
+              {supplierResult && (
+                <FileInspectionPanel role="supplier" result={supplierResult} />
+              )}
+              {catalogResult && (
+                <FileInspectionPanel role="catalog" result={catalogResult} />
+              )}
+            </div>
           </section>
         )}
 

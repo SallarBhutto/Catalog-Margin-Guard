@@ -24,6 +24,7 @@ test("inspects supplier CSV and catalog TSV locally with preserved identifiers",
 
   const supplier = page.getByTestId("supplier-inspection")
   await expect(supplier).toBeVisible({ timeout: 30_000 })
+  await supplier.getByText("File preview", { exact: false }).click()
   await expect(supplier.getByRole("columnheader", { name: "Supplier SKU" })).toBeVisible()
   await expect(supplier.getByRole("columnheader", { name: "Unit Cost" })).toBeVisible()
   await expect(supplier.getByRole("cell", { name: "001234" })).toBeVisible()
@@ -35,6 +36,7 @@ test("inspects supplier CSV and catalog TSV locally with preserved identifiers",
   const catalog = page.getByTestId("catalog-inspection")
   await expect(catalog).toBeVisible({ timeout: 30_000 })
   await expect(catalog).toContainText("Tab delimiter")
+  await catalog.getByText("File preview", { exact: false }).click()
   await expect(catalog.getByRole("columnheader", { name: "Product SKU" })).toBeVisible()
   await expect(catalog.getByRole("columnheader", { name: "Retail Price" })).toBeVisible()
   await expect(page.getByText("Both files are ready.")).toBeVisible()
@@ -129,6 +131,7 @@ test("wide previews scroll inside the table without widening the page", async ({
 
   const inspection = page.getByTestId("catalog-inspection")
   await expect(inspection).toBeVisible({ timeout: 30_000 })
+  await inspection.getByText("File preview", { exact: false }).click()
   const tableContainer = inspection.locator('[data-slot="table-container"]')
   await expect
     .poll(() =>
