@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 
-import type { NormalizedInputsResult } from "../../src/features/analysis/normalization-types"
+import type { MarginAnalysisResult } from "../../src/features/analysis/margin-analysis-types"
 import type { AnalysisConfiguration } from "../../src/features/setup/analysis-configuration"
 
 const configuration: AnalysisConfiguration = {
@@ -20,7 +20,7 @@ const configuration: AnalysisConfiguration = {
 }
 
 type AnalysisBrowserModule = Readonly<{
-  prepareNormalizedInputs(input: AnalysisConfiguration): Promise<NormalizedInputsResult>
+  runMarginAnalysis(input: AnalysisConfiguration): Promise<MarginAnalysisResult>
 }>
 
 function createSupplierCsv(rowCount: number) {
@@ -42,19 +42,43 @@ function createCatalogCsv(rowCount: number) {
   return rows.join("\n")
 }
 
-async function prepare(page: Page) {
-  return page.evaluate<NormalizedInputsResult, AnalysisConfiguration>(
+async function analyze(page: Page) {
+  return page.evaluate<MarginAnalysisResult, AnalysisConfiguration>(
     async (browserConfiguration) => {
       const modulePath = "/src/features/analysis/index.ts"
       const loaded: unknown = await import(/* @vite-ignore */ modulePath)
       const module = loaded as AnalysisBrowserModule
-      return module.prepareNormalizedInputs(browserConfiguration)
+      return module.runMarginAnalysis(browserConfiguration)
     },
     configuration,
   )
 }
 
-test("keeps generated 10k/100k normalization set-based and responsive", async ({
+async function measureAggregateQuery(page: Page) {
+  return page.evaluate(async () => {
+    const duckDBModulePath = "/src/lib/duckdb/index.ts"
+    const sqlModulePath = "/src/features/analysis/margin-analysis-sql.ts"
+    const duckDBLoaded: unknown = await import(/* @vite-ignore */ duckDBModulePath)
+    const sqlLoaded: unknown = await import(/* @vite-ignore */ sqlModulePath)
+    const { duckDBEngine } = duckDBLoaded as {
+      duckDBEngine: {
+        withConnection<T>(
+          operation: (connection: { query(sql: string): Promise<unknown> }) => Promise<T>,
+        ): Promise<T>
+      }
+    }
+    const { ANALYSIS_METADATA_SQL } = sqlLoaded as {
+      ANALYSIS_METADATA_SQL: string
+    }
+    const startedAt = performance.now()
+    await duckDBEngine.withConnection((connection) =>
+      connection.query(ANALYSIS_METADATA_SQL),
+    )
+    return performance.now() - startedAt
+  })
+}
+
+test("keeps generated 10k/100k normalization, matching, analysis, and aggregates set-based and responsive", async ({
   page,
 }) => {
   test.setTimeout(120_000)
@@ -84,48 +108,53 @@ test("keeps generated 10k/100k normalization set-based and responsive", async ({
 
     await page.evaluate(() => {
       const scope = window as Window & {
-        normalizationHeartbeat?: number
-        normalizationHeartbeatTimer?: number
+        analysisHeartbeat?: number
+        analysisHeartbeatTimer?: number
       }
-      scope.normalizationHeartbeat = 0
-      scope.normalizationHeartbeatTimer = window.setInterval(() => {
-        scope.normalizationHeartbeat = (scope.normalizationHeartbeat ?? 0) + 1
+      scope.analysisHeartbeat = 0
+      scope.analysisHeartbeatTimer = window.setInterval(() => {
+        scope.analysisHeartbeat = (scope.analysisHeartbeat ?? 0) + 1
       }, 10)
     })
 
     const startedAt = performance.now()
-    const result = await prepare(page)
+    const result = await analyze(page)
     const durationMs = performance.now() - startedAt
     const heartbeat = await page.evaluate(() => {
       const scope = window as Window & {
-        normalizationHeartbeat?: number
-        normalizationHeartbeatTimer?: number
+        analysisHeartbeat?: number
+        analysisHeartbeatTimer?: number
       }
-      if (scope.normalizationHeartbeatTimer !== undefined) {
-        window.clearInterval(scope.normalizationHeartbeatTimer)
+      if (scope.analysisHeartbeatTimer !== undefined) {
+        window.clearInterval(scope.analysisHeartbeatTimer)
       }
-      return scope.normalizationHeartbeat ?? 0
+      return scope.analysisHeartbeat ?? 0
     })
+    const aggregateDurationMs = await measureAggregateQuery(page)
 
     expect(result).toMatchObject({
       status: "READY",
       relations: {
-        supplier: { rowCount },
-        catalog: { rowCount },
+        matches: { rowCount },
+        results: { rowCount },
       },
-      quality: {
-        supplierRows: rowCount,
-        catalogRows: rowCount,
-        supplierDuplicateIdentifiers: 0,
-        catalogDuplicateIdentifiers: 0,
-        invalidSupplierCosts: 0,
-        invalidSellingPrices: 0,
-        invalidMarginOverrides: 0,
+      metadata: {
+        summary: { productsAnalyzed: rowCount },
+        dataQuality: {
+          supplierRows: rowCount,
+          catalogRows: rowCount,
+          matchedProducts: rowCount,
+          supplierDuplicateIdentifiers: 0,
+          catalogDuplicateIdentifiers: 0,
+          invalidSupplierCosts: 0,
+          invalidSellingPrices: 0,
+          invalidMarginOverrides: 0,
+        },
       },
     })
     expect(heartbeat).toBeGreaterThan(0)
     console.info(
-      `Normalization benchmark: rowsPerFile=${rowCount}, durationMs=${durationMs.toFixed(1)}, mainThreadHeartbeats=${heartbeat}`,
+      `Margin analysis benchmark: rowsPerFile=${rowCount}, totalDurationMs=${durationMs.toFixed(1)}, aggregateDurationMs=${aggregateDurationMs.toFixed(1)}, mainThreadHeartbeats=${heartbeat}`,
     )
   }
 })

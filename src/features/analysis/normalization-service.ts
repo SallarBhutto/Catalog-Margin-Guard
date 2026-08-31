@@ -53,11 +53,17 @@ function validateConfigurationShape(configuration: AnalysisConfiguration) {
   const validNumberFormat =
     configuration?.options?.numberFormat === "US" ||
     configuration?.options?.numberFormat === "EU"
+  const validStoreDefaultMargin =
+    typeof configuration?.options?.storeDefaultMargin === "number" &&
+    Number.isFinite(configuration.options.storeDefaultMargin) &&
+    configuration.options.storeDefaultMargin >= 0 &&
+    configuration.options.storeDefaultMargin <= 95
 
   if (
     mappingValues.some((value) => typeof value !== "string" || value.length === 0) ||
     typeof configuration?.options?.caseInsensitive !== "boolean" ||
-    !validNumberFormat
+    !validNumberFormat ||
+    !validStoreDefaultMargin
   ) {
     throw new NormalizationError("INVALID_CONFIGURATION")
   }
