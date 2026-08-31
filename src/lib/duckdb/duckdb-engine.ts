@@ -1,4 +1,5 @@
 import { asDuckDBEngineError, DuckDBEngineError } from "@/lib/duckdb/duckdb-error"
+import { DuckDBDataProtocol } from "@duckdb/duckdb-wasm"
 import type {
   DuckDBConnection,
   DuckDBDatabase,
@@ -154,6 +155,34 @@ class DuckDBEngine {
     } catch (error) {
       throw asDuckDBEngineError(error, "DUCKDB_HEALTH_CHECK_FAILED")
     }
+  }
+
+  async registerBrowserFile(name: string, file: File): Promise<void> {
+    await this.initialize()
+
+    const database = this.database
+    if (!database || this.snapshot.state !== "ready") {
+      throw new DuckDBEngineError("DUCKDB_ENGINE_DISPOSED")
+    }
+
+    await database.registerFileHandle(
+      name,
+      file,
+      DuckDBDataProtocol.BROWSER_FILEREADER,
+      true,
+    )
+
+    if (database !== this.database || this.snapshot.state !== "ready") {
+      await database.dropFile(name).catch(() => undefined)
+      throw new DuckDBEngineError("DUCKDB_ENGINE_DISPOSED")
+    }
+  }
+
+  async dropRegisteredFile(name: string): Promise<void> {
+    const database = this.database
+    if (!database || this.snapshot.state !== "ready") return
+
+    await database.dropFile(name).catch(() => undefined)
   }
 
   reset(): Promise<DuckDBEngineSnapshot> {

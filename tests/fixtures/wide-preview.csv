@@ -1,0 +1,3 @@
+Product SKU,Current Selling Price,Product Name,Brand,Category,Supplier Reference,Warehouse Location,Tax Class,Availability,Minimum Order Quantity,Long Descriptive Attribute,Margin Override
+001234,18.99,Blue Widget,Example Brand,Widgets,SUP-001,Aisle 14,Standard,In stock,1,This value is intentionally long to exercise restrained horizontal preview scrolling,20
+ABC-12,105.00,Standard Widget,Example Brand,Widgets,SUP-002,Aisle 08,Standard,In stock,5,Another long descriptive value that should remain inside the table viewport,10

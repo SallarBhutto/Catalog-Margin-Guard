@@ -6,8 +6,17 @@ export type DuckDBValueVector = {
   get(index: number): unknown
 }
 
+export type DuckDBSchemaField = {
+  readonly name: string
+}
+
 export type DuckDBQueryResult = {
   getChild(name: string): DuckDBValueVector | null
+  getChildAt(index: number): DuckDBValueVector | null
+  readonly numRows: number
+  readonly schema: {
+    readonly fields: readonly DuckDBSchemaField[]
+  }
 }
 
 export type DuckDBConnection = {
@@ -18,6 +27,13 @@ export type DuckDBConnection = {
 export type DuckDBDatabase = {
   instantiate(mainModule: string, pthreadWorker?: string | null): Promise<unknown>
   connect(): Promise<DuckDBConnection>
+  registerFileHandle<HandleType>(
+    name: string,
+    handle: HandleType,
+    protocol: number,
+    directIO: boolean,
+  ): Promise<void>
+  dropFile(name: string): Promise<unknown>
   terminate(): Promise<void>
 }
 

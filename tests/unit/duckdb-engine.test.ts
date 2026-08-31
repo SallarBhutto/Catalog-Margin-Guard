@@ -23,6 +23,9 @@ function createRuntime(
     Promise.resolve({
       getChild: (name: string) =>
         name === "value" ? { get: () => options.healthValue ?? 42n } : null,
+      getChildAt: () => null,
+      numRows: 1,
+      schema: { fields: [{ name: "value" }] },
     }),
   )
   const connection: DuckDBConnection = { close, query }
@@ -32,10 +35,14 @@ function createRuntime(
   const connect = vi.fn(() => Promise.resolve(connection))
   const terminate = vi.fn(() => Promise.resolve())
   const open = vi.fn(() => Promise.resolve())
+  const registerFileHandle = vi.fn(() => Promise.resolve())
+  const dropFile = vi.fn(() => Promise.resolve(null))
   const database: DuckDBDatabase & { open: typeof open } = {
     connect,
+    dropFile,
     instantiate,
     open,
+    registerFileHandle,
     terminate,
   }
   const resources: DuckDBRuntimeResources = {
@@ -53,7 +60,9 @@ function createRuntime(
     instantiate,
     open,
     query,
+    registerFileHandle,
     resources,
+    dropFile,
     terminate,
   }
 }
