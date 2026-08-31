@@ -1,0 +1,6 @@
+sku,price,margin
+EU-PLAIN,"1234,56","0,20"
+EU-GROUP,"1.234,56","20,5"
+EU-ZERO,10,0
+EU-DOT,10,95
+EU-BAD,malformed,"95,01"

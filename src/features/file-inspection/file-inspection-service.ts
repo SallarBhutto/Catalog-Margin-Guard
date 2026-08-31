@@ -26,7 +26,17 @@ type FileInspectionEngine = Pick<
 
 type RegisteredInput = Readonly<{
   internalName: string
+  delimiter: string | null
+  columns: readonly string[] | null
 }>
+
+type RegisteredInputSource = Readonly<{
+  internalName: string
+  delimiter: string
+  columns: readonly string[]
+}>
+
+type InputInvalidationListener = () => void | Promise<void>
 
 const SUPPORTED_DELIMITERS = new Set([",", ";", "|", "\t"])
 
@@ -281,6 +291,7 @@ async function inspectRegisteredFile(
 class FileInspectionService {
   private readonly sessions = new Map<FileRole, RegisteredInput>()
   private readonly roleQueues = new Map<FileRole, Promise<void>>()
+  private readonly invalidationListeners = new Set<InputInvalidationListener>()
 
   constructor(private readonly engine: FileInspectionEngine) {}
 
@@ -294,7 +305,7 @@ class FileInspectionService {
       try {
         const expectedDelimiter = await inspectPrefixDelimiter(file, metadata.format)
         await this.engine.registerBrowserFile(internalName, file)
-        this.sessions.set(role, { internalName })
+        this.sessions.set(role, { internalName, delimiter: null, columns: null })
 
         const inspection = await this.engine.withConnection((connection) =>
           inspectRegisteredFile(
@@ -306,12 +317,18 @@ class FileInspectionService {
           ),
         )
 
-        return {
+        const result = {
           metadata,
           internalName,
           ...inspection,
           warning: getFileWarning(metadata.size),
         }
+        this.sessions.set(role, {
+          internalName,
+          delimiter: inspection.delimiter,
+          columns: inspection.columns.map((column) => column.name),
+        })
+        return result
       } catch (error) {
         await this.releaseDirect(role)
         throw asFileInspectionError(error)
@@ -325,6 +342,24 @@ class FileInspectionService {
 
   async releaseAll(): Promise<void> {
     await Promise.all([this.release("supplier"), this.release("catalog")])
+  }
+
+  getRegisteredInput(role: FileRole): RegisteredInputSource | null {
+    const input = this.sessions.get(role)
+    if (!input?.delimiter || !input.columns) return null
+
+    return {
+      internalName: input.internalName,
+      delimiter: input.delimiter,
+      columns: [...input.columns],
+    }
+  }
+
+  onInputsInvalidated(listener: InputInvalidationListener) {
+    this.invalidationListeners.add(listener)
+    return () => {
+      this.invalidationListeners.delete(listener)
+    }
   }
 
   private enqueue<T>(role: FileRole, operation: () => Promise<T>): Promise<T> {
@@ -341,7 +376,12 @@ class FileInspectionService {
   private async releaseDirect(role: FileRole) {
     const registered = this.sessions.get(role)
     this.sessions.delete(role)
-    if (registered) await this.engine.dropRegisteredFile(registered.internalName)
+    if (!registered) return
+
+    await Promise.allSettled(
+      [...this.invalidationListeners].map((listener) => Promise.resolve().then(listener)),
+    )
+    await this.engine.dropRegisteredFile(registered.internalName)
   }
 }
 
@@ -354,4 +394,4 @@ export {
   inspectPrefixDelimiter,
   validateDelimitedPrefix,
 }
-export type { FileInspectionEngine }
+export type { FileInspectionEngine, InputInvalidationListener, RegisteredInputSource }

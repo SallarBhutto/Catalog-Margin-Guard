@@ -1,0 +1,9 @@
+"Supplier ""SKU""",select,Unicode / note
+" abc-12 ","$1,234.56",trim and case
+ABC-12,1234.56,duplicate after normalization
+001234,0,leading zero
+1234,malformed,bad cost
+A_B/C.D,-1,punctuation preserved
+,20,blank identifier
+Ünicode,£101.25,unicode identifier
+USD-CODE,USD 96.00,currency code

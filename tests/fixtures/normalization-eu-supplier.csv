@@ -1,0 +1,6 @@
+sku,cost
+EU-PLAIN,"1234,56"
+EU-GROUP,"€1.234,56"
+EU-ZERO,0
+EU-DOT,1.234
+EU-BAD,"1,23,4"
