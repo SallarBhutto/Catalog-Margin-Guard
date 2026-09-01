@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test"
 
 import type { MarginAnalysisResult } from "../../src/features/analysis/margin-analysis-types"
+import type {
+  ResultsPage,
+  ResultsQuery,
+} from "../../src/features/results/results-query-types"
 import type { AnalysisConfiguration } from "../../src/features/setup/analysis-configuration"
 
 const configuration: AnalysisConfiguration = {
@@ -78,6 +82,70 @@ async function measureAggregateQuery(page: Page) {
   })
 }
 
+type ResultsQueryMetrics = Readonly<{
+  firstPageMs: number
+  searchMs: number
+  filteredSortMs: number
+  deepPageMs: number
+  totalRows: number
+  searchRows: number
+  deepRows: number
+  deepPage: number
+}>
+
+async function measureResultsQueries(page: Page, rowCount: number) {
+  return page.evaluate<ResultsQueryMetrics, number>(async (browserRowCount) => {
+    const modulePath = "/src/features/results/results-query-service.ts"
+    const loaded: unknown = await import(/* @vite-ignore */ modulePath)
+    const { resultsQueryService } = loaded as {
+      resultsQueryService: {
+        getResultsPage(query: ResultsQuery): Promise<ResultsPage>
+      }
+    }
+    const baseQuery: ResultsQuery = {
+      status: "ALL",
+      targetSource: "ALL",
+      sort: "RISK_HIGHEST",
+      page: 1,
+      pageSize: 250,
+    }
+    const measure = async (query: ResultsQuery) => {
+      const startedAt = performance.now()
+      const result = await resultsQueryService.getResultsPage(query)
+      return { result, durationMs: performance.now() - startedAt }
+    }
+
+    const first = await measure(baseQuery)
+    const search = await measure({
+      ...baseQuery,
+      search: `SKU-${String(browserRowCount - 1).padStart(8, "0")}`,
+    })
+    const filteredSort = await measure({
+      ...baseQuery,
+      status: "REVIEW",
+      targetSource: "CATALOG_OVERRIDE",
+      sort: "SUPPLIER_COST_DESC",
+    })
+    const requestedDeepPage = Math.ceil(browserRowCount / baseQuery.pageSize)
+    const deep = await measure({
+      ...baseQuery,
+      sort: "IDENTIFIER_ASC",
+      page: requestedDeepPage,
+    })
+
+    return {
+      firstPageMs: first.durationMs,
+      searchMs: search.durationMs,
+      filteredSortMs: filteredSort.durationMs,
+      deepPageMs: deep.durationMs,
+      totalRows: first.result.totalRows,
+      searchRows: search.result.totalRows,
+      deepRows: deep.result.rows.length,
+      deepPage: deep.result.page,
+    }
+  }, rowCount)
+}
+
 test("keeps generated 10k/100k normalization, matching, analysis, and aggregates set-based and responsive", async ({
   page,
 }) => {
@@ -131,6 +199,7 @@ test("keeps generated 10k/100k normalization, matching, analysis, and aggregates
       return scope.analysisHeartbeat ?? 0
     })
     const aggregateDurationMs = await measureAggregateQuery(page)
+    const resultsMetrics = await measureResultsQueries(page, rowCount)
 
     expect(result).toMatchObject({
       status: "READY",
@@ -153,8 +222,14 @@ test("keeps generated 10k/100k normalization, matching, analysis, and aggregates
       },
     })
     expect(heartbeat).toBeGreaterThan(0)
+    expect(resultsMetrics).toMatchObject({
+      totalRows: rowCount,
+      searchRows: 1,
+      deepRows: 250,
+      deepPage: Math.ceil(rowCount / 250),
+    })
     console.info(
-      `Margin analysis benchmark: rowsPerFile=${rowCount}, totalDurationMs=${durationMs.toFixed(1)}, aggregateDurationMs=${aggregateDurationMs.toFixed(1)}, mainThreadHeartbeats=${heartbeat}`,
+      `Margin analysis benchmark: rowsPerFile=${rowCount}, totalDurationMs=${durationMs.toFixed(1)}, aggregateDurationMs=${aggregateDurationMs.toFixed(1)}, firstPageMs=${resultsMetrics.firstPageMs.toFixed(1)}, searchMs=${resultsMetrics.searchMs.toFixed(1)}, filteredSortMs=${resultsMetrics.filteredSortMs.toFixed(1)}, deepPage=${resultsMetrics.deepPage}, deepPageMs=${resultsMetrics.deepPageMs.toFixed(1)}, mainThreadHeartbeats=${heartbeat}`,
     )
   }
 })

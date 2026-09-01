@@ -76,9 +76,16 @@ type MarginAnalysisSuccess = Readonly<{
 
 type MarginAnalysisResult = MarginAnalysisSuccess | MarginAnalysisFailure
 
+type AnalysisStage = "preparing" | "analyzing" | "preparing-results"
+
 type AnalysisLifecycleSnapshot =
   | Readonly<{ state: "idle"; error: null; metadata: null }>
-  | Readonly<{ state: "running"; error: null; metadata: null }>
+  | Readonly<{
+      state: "running"
+      stage: AnalysisStage
+      error: null
+      metadata: null
+    }>
   | Readonly<{
       state: "ready"
       error: null
@@ -103,6 +110,7 @@ type MarginAnalysisEngine = Readonly<{
 export type {
   AnalysisDataQuality,
   AnalysisLifecycleSnapshot,
+  AnalysisStage,
   AnalysisRelationMetadata,
   AnalysisRelationName,
   AnalysisSummary,

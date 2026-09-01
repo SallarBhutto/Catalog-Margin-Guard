@@ -50,6 +50,9 @@ function createServiceHarness(headers = ["Supplier SKU", "Unit Cost"]) {
   const connection: DuckDBConnection = {
     query,
     close: vi.fn(() => Promise.resolve()),
+    prepare: vi.fn(() =>
+      Promise.resolve({ close: vi.fn(() => Promise.resolve()), query: vi.fn() }),
+    ),
   }
   const registerBrowserFile = vi.fn(() => Promise.resolve())
   const dropRegisteredFile = vi.fn(() => Promise.resolve())

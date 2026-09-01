@@ -1,12 +1,29 @@
-import { ArrowLeft, CheckCircle2 } from "lucide-react"
-import { useEffect, useMemo, useReducer } from "react"
+import { ArrowLeft, CheckCircle2, CircleAlert } from "lucide-react"
+import { useEffect, useMemo, useReducer, useState, useSyncExternalStore } from "react"
 
+import { getBoundedPreviewLimit } from "@/app/access-policy"
 import { PageContainer } from "@/components/shared/page-container"
 import { PrivacyNotice } from "@/components/shared/privacy-notice"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AnalysisProgress } from "@/features/analysis/analysis-progress"
+import {
+  clearMarginAnalysis,
+  clearNormalizedInputs,
+  marginAnalysisService,
+  runMarginAnalysis,
+} from "@/features/analysis"
+import type {
+  MarginAnalysisFailure,
+  MarginAnalysisSuccess,
+} from "@/features/analysis/margin-analysis-types"
+import { useAccessCapabilities } from "@/features/auth/auth-context"
 import { FileInspectionPanel } from "@/features/file-inspection/file-inspection-panel"
 import { fileInspectionService } from "@/features/file-inspection/file-inspection-service"
 import { useFileInspection } from "@/features/file-inspection/use-file-inspection"
 import { FilePicker } from "@/features/file-selection/file-picker"
+import { ResultsPage } from "@/features/results/results-page"
+import { resultsQueryService } from "@/features/results/results-query-service"
+import type { MarginResultRow } from "@/features/results/results-query-types"
 import {
   analysisSetupReducer,
   createDefaultAnalysisSetupDraft,
@@ -25,11 +42,25 @@ type SetupShellProps = {
 function SetupShell({ onBack }: SetupShellProps) {
   const supplier = useFileInspection("supplier")
   const catalog = useFileInspection("catalog")
+  const capabilities = useAccessCapabilities()
+  const analysisSnapshot = useSyncExternalStore(
+    marginAnalysisService.subscribe,
+    marginAnalysisService.getSnapshot,
+    marginAnalysisService.getSnapshot,
+  )
   const [setupDraft, dispatch] = useReducer(
     analysisSetupReducer,
     undefined,
     createDefaultAnalysisSetupDraft,
   )
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [analysisError, setAnalysisError] = useState<
+    MarginAnalysisFailure["error"] | null
+  >(null)
+  const [completedAnalysis, setCompletedAnalysis] = useState<{
+    result: MarginAnalysisSuccess
+    previewRows: readonly MarginResultRow[]
+  } | null>(null)
 
   const leaveWorkflow = async () => {
     await fileInspectionService.releaseAll()
@@ -88,6 +119,71 @@ function SetupShell({ onBack }: SetupShellProps) {
   const chooseCatalogFile = (file: File) => {
     dispatch({ type: "catalog-file-changed" })
     void catalog.chooseFile(file)
+  }
+
+  const analyzeCatalog = async () => {
+    if (!validation.isReady || !validation.configuration || isExecuting) return
+
+    setAnalysisError(null)
+    setCompletedAnalysis(null)
+    setIsExecuting(true)
+
+    try {
+      const result = await runMarginAnalysis(validation.configuration)
+      if (result.status === "ERROR") {
+        setAnalysisError(result.error)
+        return
+      }
+
+      const previewRows = await resultsQueryService.getHighestRiskPreview({
+        limit: getBoundedPreviewLimit(capabilities),
+        sort: "RISK_HIGHEST",
+      })
+      setCompletedAnalysis({ result, previewRows })
+      window.scrollTo({ top: 0, behavior: "auto" })
+    } catch {
+      setAnalysisError({
+        code: "ANALYSIS_FAILED",
+        userMessage:
+          "We couldn't prepare the results preview. Your files are still on this computer. Review your setup and try again.",
+      })
+      await clearMarginAnalysis().catch(() => undefined)
+    } finally {
+      setIsExecuting(false)
+    }
+  }
+
+  const startNewScan = async () => {
+    setCompletedAnalysis(null)
+    setAnalysisError(null)
+    dispatch({ type: "reset" })
+    await Promise.all([supplier.clearFile(), catalog.clearFile()])
+    await Promise.all([clearMarginAnalysis(), clearNormalizedInputs()])
+    window.scrollTo({ top: 0, behavior: "auto" })
+  }
+
+  if (completedAnalysis && validation.configuration) {
+    return (
+      <ResultsPage
+        result={completedAnalysis.result}
+        previewRows={completedAnalysis.previewRows}
+        currency={validation.configuration.options.currency}
+        numberFormat={validation.configuration.options.numberFormat}
+        onStartNewScan={startNewScan}
+      />
+    )
+  }
+
+  if (isExecuting) {
+    return (
+      <AnalysisProgress
+        stage={
+          analysisSnapshot.state === "running"
+            ? analysisSnapshot.stage
+            : "preparing-results"
+        }
+      />
+    )
   }
 
   return (
@@ -191,7 +287,19 @@ function SetupShell({ onBack }: SetupShellProps) {
               validation={validation}
               dispatch={dispatch}
             />
-            <SetupReadinessSummary validation={validation} />
+            <SetupReadinessSummary
+              validation={validation}
+              onAnalyze={() => void analyzeCatalog()}
+            />
+            {analysisError && (
+              <Alert variant="destructive" className="mt-5">
+                <CircleAlert aria-hidden="true" />
+                <AlertTitle>We couldn't complete this analysis.</AlertTitle>
+                <AlertDescription>
+                  {analysisError.userMessage} Your files are still on this computer.
+                </AlertDescription>
+              </Alert>
+            )}
           </>
         )}
 

@@ -177,7 +177,12 @@ class MarginAnalysisService {
     configuration: AnalysisConfiguration,
   ): Promise<MarginAnalysisResult> {
     this.latestResult = null
-    this.updateSnapshot({ state: "running", error: null, metadata: null })
+    this.updateSnapshot({
+      state: "running",
+      stage: "preparing",
+      error: null,
+      metadata: null,
+    })
     this.log("analysis started")
 
     await this.cleanupDirect().catch(() => undefined)
@@ -193,6 +198,12 @@ class MarginAnalysisService {
       return this.fail(mapNormalizationFailure(normalized.error.code))
     }
 
+    this.updateSnapshot({
+      state: "running",
+      stage: "analyzing",
+      error: null,
+      metadata: null,
+    })
     const sql = createMarginAnalysisSql(configuration)
     let stage: "matching" | "analysis" = "matching"
 
@@ -204,6 +215,12 @@ class MarginAnalysisService {
           this.log("matching complete")
           stage = "analysis"
           await connection.query(sql.analysis)
+          this.updateSnapshot({
+            state: "running",
+            stage: "preparing-results",
+            error: null,
+            metadata: null,
+          })
           const metadata = await connection.query(sql.metadata)
           await connection.query("COMMIT;")
           return metadata

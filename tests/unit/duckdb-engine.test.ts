@@ -28,7 +28,10 @@ function createRuntime(
       schema: { fields: [{ name: "value" }] },
     }),
   )
-  const connection: DuckDBConnection = { close, query }
+  const prepare = vi.fn(() =>
+    Promise.resolve({ close: vi.fn(() => Promise.resolve()), query: vi.fn() }),
+  )
+  const connection: DuckDBConnection = { close, prepare, query }
   const instantiate = options.instantiateError
     ? vi.fn(() => Promise.reject(options.instantiateError!))
     : vi.fn(() => Promise.resolve())

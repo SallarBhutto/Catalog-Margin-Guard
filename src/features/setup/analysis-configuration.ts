@@ -87,6 +87,7 @@ type SetupValidationResult = Readonly<{
 type MappingField = keyof AnalysisSetupDraft["mapping"]
 
 type AnalysisSetupAction =
+  | Readonly<{ type: "reset" }>
   | Readonly<{ type: "supplier-file-changed" }>
   | Readonly<{ type: "catalog-file-changed" }>
   | Readonly<{
@@ -144,6 +145,8 @@ function analysisSetupReducer(
   action: AnalysisSetupAction,
 ): AnalysisSetupDraft {
   switch (action.type) {
+    case "reset":
+      return createDefaultAnalysisSetupDraft()
     case "supplier-file-changed":
       return {
         ...state,

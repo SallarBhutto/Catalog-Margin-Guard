@@ -1,5 +1,6 @@
 import {
   ACCESS_LIMITS,
+  getBoundedPreviewLimit,
   getAccessCapabilities,
   type AccessCapabilities,
 } from "@/app/access-policy"
@@ -21,10 +22,12 @@ describe("access policy", () => {
   it("limits anonymous users to the centralized result preview", () => {
     expect(ACCESS_LIMITS.anonymousResultPreview).toBe(20)
     expect(getAccessCapabilities("anonymous")).toEqual(anonymousCapabilities)
+    expect(getBoundedPreviewLimit(anonymousCapabilities)).toBe(20)
   })
 
   it("unlocks every v0 capability for authenticated users", () => {
-    expect(getAccessCapabilities("authenticated")).toEqual({
+    const capabilities = getAccessCapabilities("authenticated")
+    expect(capabilities).toEqual({
       canViewFullResults: true,
       canSearchFullResults: true,
       canPaginateFullResults: true,
@@ -32,5 +35,6 @@ describe("access policy", () => {
       canUseManualOverrides: true,
       resultPreviewLimit: null,
     })
+    expect(getBoundedPreviewLimit(capabilities)).toBe(20)
   })
 })

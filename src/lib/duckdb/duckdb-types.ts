@@ -19,8 +19,14 @@ export type DuckDBQueryResult = {
   }
 }
 
+export type DuckDBPreparedStatement = {
+  query(...params: unknown[]): Promise<DuckDBQueryResult>
+  close(): Promise<void>
+}
+
 export type DuckDBConnection = {
   query(sql: string): Promise<DuckDBQueryResult>
+  prepare(sql: string): Promise<DuckDBPreparedStatement>
   close(): Promise<void>
 }
 

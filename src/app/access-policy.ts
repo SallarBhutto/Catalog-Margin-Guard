@@ -43,4 +43,8 @@ function getAccessCapabilities(authStatus: AuthStatus): AccessCapabilities {
   return ACCESS_CAPABILITIES[getAccessLevel(authStatus)]
 }
 
-export { getAccessCapabilities }
+function getBoundedPreviewLimit(capabilities: AccessCapabilities) {
+  return capabilities.resultPreviewLimit ?? ACCESS_LIMITS.anonymousResultPreview
+}
+
+export { getAccessCapabilities, getBoundedPreviewLimit }
