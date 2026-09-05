@@ -1,3 +1,4 @@
+import type { TargetSource } from "@/features/analysis/margin-analysis-types"
 import type {
   DisplayCurrency,
   NumberFormat,
@@ -66,4 +67,17 @@ function formatCount(value: number, numberFormat: NumberFormat) {
   return new Intl.NumberFormat(numberFormat === "EU" ? "de-DE" : "en-US").format(value)
 }
 
-export { formatCount, formatDecimal, formatMoney, formatPercent, roundDecimalString }
+function formatTargetSource(source: TargetSource) {
+  if (source === "MANUAL_OVERRIDE") return "Manual Override"
+  if (source === "CATALOG_OVERRIDE") return "Product Override"
+  return "Store Default"
+}
+
+export {
+  formatCount,
+  formatDecimal,
+  formatMoney,
+  formatPercent,
+  formatTargetSource,
+  roundDecimalString,
+}

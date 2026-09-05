@@ -21,7 +21,7 @@ type ResultsQueryEngine = Readonly<{
 
 const DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/
 const STATUSES = new Set(["LOSS", "REVIEW", "OK"])
-const TARGET_SOURCES = new Set(["STORE_DEFAULT", "CATALOG_OVERRIDE"])
+const TARGET_SOURCES = new Set(["STORE_DEFAULT", "CATALOG_OVERRIDE", "MANUAL_OVERRIDE"])
 
 function readString(result: DuckDBQueryResult, name: string, rowIndex: number) {
   const value = result.getChild(name)?.get(rowIndex)
@@ -32,6 +32,15 @@ function readString(result: DuckDBQueryResult, name: string, rowIndex: number) {
 function readDecimal(result: DuckDBQueryResult, name: string, rowIndex: number) {
   const value = readString(result, name, rowIndex)
   if (!DECIMAL_PATTERN.test(value)) throw new Error("Invalid decimal result value.")
+  return value
+}
+
+function readNullableDecimal(result: DuckDBQueryResult, name: string, rowIndex: number) {
+  const value = result.getChild(name)?.get(rowIndex)
+  if (value == null) return null
+  if (typeof value !== "string" || !DECIMAL_PATTERN.test(value)) {
+    throw new Error("Invalid decimal result value.")
+  }
   return value
 }
 
@@ -47,12 +56,28 @@ function mapMarginResultRows(result: DuckDBQueryResult): readonly MarginResultRo
     }
 
     rows.push({
+      rowId: readString(result, "row_id", rowIndex),
       identifier: readString(result, "identifier", rowIndex),
       supplierCost: readDecimal(result, "supplier_cost", rowIndex),
       sellingPrice: readDecimal(result, "selling_price", rowIndex),
       grossMarginPercent: readDecimal(result, "gross_margin_percent", rowIndex),
       targetMarginPercent: readDecimal(result, "target_margin_percent", rowIndex),
       targetSource: targetSource as MarginResultRow["targetSource"],
+      storeDefaultMarginPercent: readDecimal(
+        result,
+        "store_default_margin_percent",
+        rowIndex,
+      ),
+      catalogOverrideMarginPercent: readNullableDecimal(
+        result,
+        "catalog_override_margin_percent",
+        rowIndex,
+      ),
+      manualOverrideMarginPercent: readNullableDecimal(
+        result,
+        "manual_override_margin_percent",
+        rowIndex,
+      ),
       priceForTargetMargin: readDecimal(result, "price_for_target_margin", rowIndex),
       status: status as MarginResultRow["status"],
     })

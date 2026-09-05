@@ -52,11 +52,15 @@ describe("margin analysis SQL", () => {
     expect(sql).toContain("WHEN catalog_margin_override IS NOT NULL")
     expect(sql).toContain("THEN 'CATALOG_OVERRIDE'")
     expect(sql).toContain("ELSE 'STORE_DEFAULT'")
-    expect(sql).toContain("CAST(100 AS DECIMAL(7,4)) * gross_profit")
+    expect(sql).toContain("CAST(100 AS DECIMAL(7,4)) * (selling_price - supplier_cost)")
     expect(sql).toContain("< effective_target_margin_pct * selling_price")
-    expect(sql).toContain("+ target_denominator_units")
+    expect(sql).toContain(
+      "+ (CAST(1000000 AS HUGEINT) - CAST(effective_target_margin_pct",
+    )
     expect(sql).toContain("- CAST(1 AS HUGEINT)")
-    expect(sql).toContain("// target_denominator_units")
+    expect(sql).toContain(
+      "// (CAST(1000000 AS HUGEINT) - CAST(effective_target_margin_pct",
+    )
     expect(sql).not.toContain("ROUND(")
     expect(sql).not.toContain("DOUBLE")
     expect(sql).not.toContain("FLOAT")
@@ -68,6 +72,9 @@ describe("margin analysis SQL", () => {
     )
     expect(ANALYSIS_METADATA_SQL).toContain(
       "gross_margin_pct >= CAST(30 AS DECIMAL(38,12))",
+    )
+    expect(ANALYSIS_METADATA_SQL).toContain(
+      "target_source IN ('CATALOG_OVERRIDE', 'MANUAL_OVERRIDE')",
     )
     expect(ANALYSIS_METADATA_SQL).not.toMatch(/SELECT\s+\*\s+FROM analysis_results/i)
   })

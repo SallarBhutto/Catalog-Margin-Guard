@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 
 import type { AccessCapabilities } from "@/app/access-policy"
+import type { MarginAnalysisMetadata } from "@/features/analysis/margin-analysis-types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,8 +24,13 @@ import {
   formatCount,
   formatMoney,
   formatPercent,
+  formatTargetSource,
 } from "@/features/results/results-formatting"
 import { resultsQueryService } from "@/features/results/results-query-service"
+import {
+  ManualOverrideDialog,
+  type ManualOverrideMutationService,
+} from "@/features/results/manual-override-dialog"
 import {
   DEFAULT_RESULT_PAGE_SIZE,
   RESULT_PAGE_SIZES,
@@ -66,7 +72,7 @@ const TARGET_SOURCE_OPTIONS: readonly Readonly<{
 }>[] = [
   { value: "ALL", label: "All" },
   { value: "STORE_DEFAULT", label: "Store Default" },
-  { value: "CATALOG_OVERRIDE", label: "Product Override" },
+  { value: "PRODUCT_OVERRIDE", label: "Product Override" },
 ]
 
 const SORT_OPTIONS: readonly Readonly<{ value: ResultSort; label: string }>[] = [
@@ -90,22 +96,25 @@ type ResultsPageQueryService = Pick<typeof resultsQueryService, "getResultsPage"
 type AuthenticatedResultsBrowserProps = Readonly<{
   capabilities: Pick<
     AccessCapabilities,
-    "canPaginateFullResults" | "canSearchFullResults" | "canViewFullResults"
+    | "canPaginateFullResults"
+    | "canSearchFullResults"
+    | "canUseManualOverrides"
+    | "canViewFullResults"
   >
   currency: DisplayCurrency
   numberFormat: NumberFormat
   service?: ResultsPageQueryService
+  overrideService?: ManualOverrideMutationService
+  onMetadataChanged?: (metadata: MarginAnalysisMetadata) => void
 }>
-
-function targetSourceLabel(source: "STORE_DEFAULT" | "CATALOG_OVERRIDE") {
-  return source === "STORE_DEFAULT" ? "Store Default" : "Product Override"
-}
 
 function AuthenticatedResultsBrowser({
   capabilities,
   currency,
   numberFormat,
   service = resultsQueryService,
+  overrideService,
+  onMetadataChanged,
 }: AuthenticatedResultsBrowserProps) {
   const [searchInput, setSearchInput] = useState("")
   const [query, setQuery] = useState<ResultsQuery>(DEFAULT_QUERY)
@@ -113,6 +122,8 @@ function AuthenticatedResultsBrowser({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const requestGeneration = useRef(0)
+  const [refreshGeneration, setRefreshGeneration] = useState(0)
+  const [overrideRow, setOverrideRow] = useState<ResultsPage["rows"][number] | null>(null)
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -150,7 +161,7 @@ function AuthenticatedResultsBrowser({
     return () => {
       requestGeneration.current += 1
     }
-  }, [capabilities.canViewFullResults, query, service])
+  }, [capabilities.canViewFullResults, query, refreshGeneration, service])
 
   const hasActiveFilters = Boolean(
     searchInput || query.status !== "ALL" || query.targetSource !== "ALL",
@@ -383,11 +394,12 @@ function AuthenticatedResultsBrowser({
                   Price for Target<span className="sr-only"> Margin</span>
                 </TableHead>
                 <TableHead>Status</TableHead>
+                {capabilities.canUseManualOverrides && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody className={cn(isLoading && "opacity-60")}>
-              {pageData?.rows.map((row, index) => (
-                <TableRow key={`${row.identifier}-${index}`}>
+              {pageData?.rows.map((row) => (
+                <TableRow key={row.rowId}>
                   <TableCell
                     className="max-w-64 truncate font-medium text-text-primary"
                     title={row.identifier}
@@ -416,7 +428,7 @@ function AuthenticatedResultsBrowser({
                     {formatPercent(row.targetMarginPercent, numberFormat)}
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {targetSourceLabel(row.targetSource)}
+                    {formatTargetSource(row.targetSource)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-text-primary">
                     {formatMoney(row.priceForTargetMargin, currency, numberFormat)}
@@ -424,6 +436,19 @@ function AuthenticatedResultsBrowser({
                   <TableCell>
                     <StatusBadge status={row.status} />
                   </TableCell>
+                  {capabilities.canUseManualOverrides && (
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="small"
+                        onClick={() => setOverrideRow(row)}
+                        aria-label={`${row.manualOverrideMarginPercent ? "Edit" : "Set"} target for ${row.identifier}`}
+                      >
+                        {row.manualOverrideMarginPercent ? "Edit target" : "Set target"}
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -471,6 +496,24 @@ function AuthenticatedResultsBrowser({
           </div>
         </div>
       )}
+
+      <ManualOverrideDialog
+        row={overrideRow}
+        open={Boolean(overrideRow)}
+        onOpenChange={(open) => {
+          if (!open) setOverrideRow(null)
+        }}
+        access={capabilities}
+        numberFormat={numberFormat}
+        service={overrideService}
+        onChanged={({ metadata }) => {
+          setOverrideRow(null)
+          onMetadataChanged?.(metadata)
+          setIsLoading(true)
+          setError(null)
+          setRefreshGeneration((current) => current + 1)
+        }}
+      />
     </section>
   )
 }

@@ -9,12 +9,16 @@ import type {
  * conversion cannot change their canonical value.
  */
 type MarginResultRow = Readonly<{
+  rowId: string
   identifier: string
   supplierCost: string
   sellingPrice: string
   grossMarginPercent: string
   targetMarginPercent: string
   targetSource: TargetSource
+  storeDefaultMarginPercent: string
+  catalogOverrideMarginPercent: string | null
+  manualOverrideMarginPercent: string | null
   priceForTargetMargin: string
   status: ProductAnalysisStatus
 }>
@@ -24,7 +28,7 @@ const DEFAULT_RESULT_PAGE_SIZE = 100
 
 type ResultPageSize = (typeof RESULT_PAGE_SIZES)[number]
 type ResultStatusFilter = "ALL" | ProductAnalysisStatus
-type ResultTargetSourceFilter = "ALL" | TargetSource
+type ResultTargetSourceFilter = "ALL" | "STORE_DEFAULT" | "PRODUCT_OVERRIDE"
 type ResultSort =
   | "RISK_HIGHEST"
   | "MARGIN_LOWEST"

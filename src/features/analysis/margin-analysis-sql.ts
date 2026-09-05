@@ -17,6 +17,39 @@ const DROP_ANALYSIS_RELATIONS_SQL = ANALYSIS_RELATION_NAMES.map(
   (name) => `DROP TABLE IF EXISTS ${name};`,
 )
 
+function createPriceForTargetMarginExpression(
+  supplierCost = "supplier_cost",
+  targetMargin = "effective_target_margin_pct",
+) {
+  const supplierCostUnits = `CAST(${supplierCost} * CAST(10000 AS DECIMAL(18,0)) AS HUGEINT)`
+  const targetMarginUnits = `CAST(${targetMargin} * CAST(10000 AS DECIMAL(18,0)) AS HUGEINT)`
+  const denominator = `(CAST(1000000 AS HUGEINT) - ${targetMarginUnits})`
+
+  return `CAST(
+    CAST(
+      ((${supplierCostUnits} * CAST(10000 AS HUGEINT)) + ${denominator} - CAST(1 AS HUGEINT))
+        // ${denominator}
+      AS DECIMAL(18,0)
+    ) * CAST(0.01 AS DECIMAL(3,2))
+    AS DECIMAL(18,2)
+  )`
+}
+
+function createProductStatusExpression(
+  supplierCost = "supplier_cost",
+  sellingPrice = "selling_price",
+  targetMargin = "effective_target_margin_pct",
+) {
+  return `CASE
+    WHEN ${sellingPrice} < ${supplierCost} THEN 'LOSS'
+    WHEN
+      CAST(100 AS DECIMAL(7,4)) * (${sellingPrice} - ${supplierCost})
+      < ${targetMargin} * ${sellingPrice}
+    THEN 'REVIEW'
+    ELSE 'OK'
+  END`
+}
+
 const CREATE_UNIQUE_SUPPLIER_SQL = `CREATE TABLE ${UNIQUE_SUPPLIER_RELATION} AS
 SELECT
   normalized_identifier AS match_key,
@@ -148,15 +181,6 @@ WITH analyzable_matches AS (
     (gross_profit_units * CAST(100000000000000 AS HUGEINT)) // selling_price_units AS gross_margin_scaled,
     CAST(1000000 AS HUGEINT) - target_margin_units AS target_denominator_units
   FROM financials
-), calculated AS (
-  SELECT
-    *,
-    (
-      supplier_cost_units * CAST(10000 AS HUGEINT)
-      + target_denominator_units
-      - CAST(1 AS HUGEINT)
-    ) // target_denominator_units AS price_for_target_cents
-  FROM scaled
 )
 SELECT
   match_key,
@@ -176,20 +200,9 @@ SELECT
   CAST(NULL AS DECIMAL(7,4)) AS manual_override_margin_pct,
   effective_target_margin_pct,
   target_source,
-  CAST(
-    CAST(price_for_target_cents AS DECIMAL(18,0))
-      * CAST(0.01 AS DECIMAL(3,2))
-    AS DECIMAL(18,2)
-  ) AS price_for_target_margin,
-  CASE
-    WHEN selling_price < supplier_cost THEN 'LOSS'
-    WHEN
-      CAST(100 AS DECIMAL(7,4)) * gross_profit
-      < effective_target_margin_pct * selling_price
-    THEN 'REVIEW'
-    ELSE 'OK'
-  END AS status
-FROM calculated;`
+  ${createPriceForTargetMarginExpression()} AS price_for_target_margin,
+  ${createProductStatusExpression()} AS status
+FROM scaled;`
 }
 
 const ANALYSIS_METADATA_SQL = `SELECT
@@ -199,7 +212,7 @@ const ANALYSIS_METADATA_SQL = `SELECT
   (SELECT count(*) FILTER (WHERE status = 'OK') FROM ${ANALYSIS_RESULTS_RELATION})::UBIGINT AS products_meeting_target,
   (SELECT CAST(CAST(avg(gross_margin_pct) AS DECIMAL(38,12)) AS VARCHAR) FROM ${ANALYSIS_RESULTS_RELATION}) AS average_gross_margin_pct,
   (SELECT count(*) FILTER (WHERE target_source = 'STORE_DEFAULT') FROM ${ANALYSIS_RESULTS_RELATION})::UBIGINT AS products_using_store_default_target,
-  (SELECT count(*) FILTER (WHERE target_source = 'CATALOG_OVERRIDE') FROM ${ANALYSIS_RESULTS_RELATION})::UBIGINT AS products_using_product_specific_target,
+  (SELECT count(*) FILTER (WHERE target_source IN ('CATALOG_OVERRIDE', 'MANUAL_OVERRIDE')) FROM ${ANALYSIS_RESULTS_RELATION})::UBIGINT AS products_using_product_specific_target,
   (SELECT count(*) FILTER (WHERE gross_margin_pct < CAST(0 AS DECIMAL(38,12))) FROM ${ANALYSIS_RESULTS_RELATION})::UBIGINT AS exposure_below_zero,
   (SELECT count(*) FILTER (WHERE gross_margin_pct >= CAST(0 AS DECIMAL(38,12)) AND gross_margin_pct < CAST(5 AS DECIMAL(38,12))) FROM ${ANALYSIS_RESULTS_RELATION})::UBIGINT AS exposure_zero_to_five,
   (SELECT count(*) FILTER (WHERE gross_margin_pct >= CAST(5 AS DECIMAL(38,12)) AND gross_margin_pct < CAST(10 AS DECIMAL(38,12))) FROM ${ANALYSIS_RESULTS_RELATION})::UBIGINT AS exposure_five_to_ten,
@@ -243,4 +256,6 @@ export {
   UNIQUE_SUPPLIER_RELATION,
   createAnalysisResultsSql,
   createMarginAnalysisSql,
+  createPriceForTargetMarginExpression,
+  createProductStatusExpression,
 }

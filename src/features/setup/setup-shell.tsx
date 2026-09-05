@@ -1,5 +1,12 @@
 import { ArrowLeft, CheckCircle2, CircleAlert } from "lucide-react"
-import { useEffect, useMemo, useReducer, useState, useSyncExternalStore } from "react"
+import {
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react"
 
 import { getBoundedPreviewLimit } from "@/app/access-policy"
 import { PageContainer } from "@/components/shared/page-container"
@@ -16,12 +23,13 @@ import type {
   MarginAnalysisFailure,
   MarginAnalysisSuccess,
 } from "@/features/analysis/margin-analysis-types"
-import { useAccessCapabilities } from "@/features/auth/auth-context"
+import { useAuthState } from "@/features/auth/auth-context"
 import { FileInspectionPanel } from "@/features/file-inspection/file-inspection-panel"
 import { fileInspectionService } from "@/features/file-inspection/file-inspection-service"
 import { useFileInspection } from "@/features/file-inspection/use-file-inspection"
 import { FilePicker } from "@/features/file-selection/file-picker"
 import { ResultsPage } from "@/features/results/results-page"
+import { manualOverrideService } from "@/features/results/manual-override-service"
 import { resultsQueryService } from "@/features/results/results-query-service"
 import type { MarginResultRow } from "@/features/results/results-query-types"
 import {
@@ -42,7 +50,7 @@ type SetupShellProps = {
 function SetupShell({ onBack }: SetupShellProps) {
   const supplier = useFileInspection("supplier")
   const catalog = useFileInspection("catalog")
-  const capabilities = useAccessCapabilities()
+  const { status: authStatus, capabilities } = useAuthState()
   const analysisSnapshot = useSyncExternalStore(
     marginAnalysisService.subscribe,
     marginAnalysisService.getSnapshot,
@@ -61,6 +69,8 @@ function SetupShell({ onBack }: SetupShellProps) {
     result: MarginAnalysisSuccess
     previewRows: readonly MarginResultRow[]
   } | null>(null)
+  const workflowGeneration = useRef(0)
+  const lastResolvedAuthStatus = useRef<"anonymous" | "authenticated" | null>(null)
 
   const leaveWorkflow = async () => {
     await fileInspectionService.releaseAll()
@@ -102,6 +112,54 @@ function SetupShell({ onBack }: SetupShellProps) {
     })
   }, [catalogResult])
 
+  useEffect(() => {
+    if (authStatus === "loading") return
+
+    const previous = lastResolvedAuthStatus.current
+    lastResolvedAuthStatus.current = authStatus
+    if (previous !== "authenticated" || authStatus !== "anonymous") return
+
+    const generation = workflowGeneration.current
+    void (async () => {
+      const cleared = await manualOverrideService
+        .cancelPendingAndClear()
+        .catch(() => null)
+      if (!cleared) {
+        workflowGeneration.current += 1
+        setCompletedAnalysis(null)
+        await clearMarginAnalysis().catch(() => undefined)
+        return
+      }
+      if (generation !== workflowGeneration.current) return
+
+      setCompletedAnalysis((current) =>
+        current
+          ? {
+              result: { ...current.result, metadata: cleared.metadata },
+              previewRows: current.previewRows,
+            }
+          : null,
+      )
+
+      const previewRows = await resultsQueryService
+        .getHighestRiskPreview({
+          limit: getBoundedPreviewLimit(capabilities),
+          sort: "RISK_HIGHEST",
+        })
+        .catch(() => null)
+      if (!previewRows || generation !== workflowGeneration.current) return
+
+      setCompletedAnalysis((current) =>
+        current
+          ? {
+              result: current.result,
+              previewRows,
+            }
+          : null,
+      )
+    })()
+  }, [authStatus, capabilities])
+
   const validation = useMemo(
     () =>
       validateAnalysisConfiguration(setupDraft, {
@@ -127,6 +185,7 @@ function SetupShell({ onBack }: SetupShellProps) {
     setAnalysisError(null)
     setCompletedAnalysis(null)
     setIsExecuting(true)
+    const generation = ++workflowGeneration.current
 
     try {
       const result = await runMarginAnalysis(validation.configuration)
@@ -139,6 +198,7 @@ function SetupShell({ onBack }: SetupShellProps) {
         limit: getBoundedPreviewLimit(capabilities),
         sort: "RISK_HIGHEST",
       })
+      if (generation !== workflowGeneration.current) return
       setCompletedAnalysis({ result, previewRows })
       window.scrollTo({ top: 0, behavior: "auto" })
     } catch {
@@ -154,9 +214,11 @@ function SetupShell({ onBack }: SetupShellProps) {
   }
 
   const startNewScan = async () => {
+    workflowGeneration.current += 1
     setCompletedAnalysis(null)
     setAnalysisError(null)
     dispatch({ type: "reset" })
+    await manualOverrideService.cancelPendingAndClear().catch(() => null)
     await Promise.all([supplier.clearFile(), catalog.clearFile()])
     await Promise.all([clearMarginAnalysis(), clearNormalizedInputs()])
     window.scrollTo({ top: 0, behavior: "auto" })
@@ -170,6 +232,11 @@ function SetupShell({ onBack }: SetupShellProps) {
         currency={validation.configuration.options.currency}
         numberFormat={validation.configuration.options.numberFormat}
         onStartNewScan={startNewScan}
+        onMetadataChanged={(metadata) =>
+          setCompletedAnalysis((current) =>
+            current ? { ...current, result: { ...current.result, metadata } } : current,
+          )
+        }
       />
     )
   }

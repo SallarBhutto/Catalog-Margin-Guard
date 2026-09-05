@@ -16,22 +16,30 @@ import type { DuckDBQueryResult } from "@/lib/duckdb/duckdb-types"
 
 const rows = [
   {
+    row_id: "3",
     identifier: "KLP-91",
     supplier_cost: "151.0000",
     selling_price: "149.0000",
     gross_margin_percent: "-1.342281879194",
     target_margin_percent: "20.0000",
     target_source: "STORE_DEFAULT",
+    store_default_margin_percent: "20.0000",
+    catalog_override_margin_percent: null,
+    manual_override_margin_percent: null,
     price_for_target_margin: "188.75",
     status: "LOSS",
   },
   {
+    row_id: "1",
     identifier: "ABC-12",
     supplier_cost: "96.0000",
     selling_price: "105.0000",
     gross_margin_percent: "8.571428571428",
     target_margin_percent: "10.0000",
     target_source: "CATALOG_OVERRIDE",
+    store_default_margin_percent: "20.0000",
+    catalog_override_margin_percent: "10.0000",
+    manual_override_margin_percent: null,
     price_for_target_margin: "106.67",
     status: "REVIEW",
   },
@@ -102,7 +110,7 @@ describe("bounded results query layer", () => {
     const sql = createResultsSql(
       resultsQuery({
         status: "REVIEW",
-        targetSource: "CATALOG_OVERRIDE",
+        targetSource: "PRODUCT_OVERRIDE",
         page: 3,
         pageSize: 50,
       }),
@@ -110,7 +118,9 @@ describe("bounded results query layer", () => {
 
     for (const statement of [sql.count, sql.rows]) {
       expect(statement).toContain("status = 'REVIEW'")
-      expect(statement).toContain("target_source = 'CATALOG_OVERRIDE'")
+      expect(statement).toContain(
+        "target_source IN ('CATALOG_OVERRIDE', 'MANUAL_OVERRIDE')",
+      )
     }
     expect(sql.count).toContain("count(*)::UBIGINT AS total_rows")
     expect(sql.rows).toContain("LIMIT 50")
@@ -182,12 +192,16 @@ describe("bounded results query layer", () => {
       pageSize: 100,
     })
     expect(result.rows[0]).toEqual({
+      rowId: "3",
       identifier: "KLP-91",
       supplierCost: "151.0000",
       sellingPrice: "149.0000",
       grossMarginPercent: "-1.342281879194",
       targetMarginPercent: "20.0000",
       targetSource: "STORE_DEFAULT",
+      storeDefaultMarginPercent: "20.0000",
+      catalogOverrideMarginPercent: null,
+      manualOverrideMarginPercent: null,
       priceForTargetMargin: "188.75",
       status: "LOSS",
     })

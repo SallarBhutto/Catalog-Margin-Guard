@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { marginPercentageTextSchema } from "@/features/analysis/margin-target-validation"
 import type {
   CatalogColumnSuggestions,
   SupplierColumnSuggestions,
@@ -108,12 +109,7 @@ type AnalysisSetupAction =
   | Readonly<{ type: "currency-changed"; value: DisplayCurrency }>
   | Readonly<{ type: "case-sensitivity-changed"; value: boolean }>
 
-const defaultMarginSchema = z
-  .string()
-  .trim()
-  .regex(/^\d+(?:\.\d+)?$/)
-  .transform(Number)
-  .pipe(z.number().finite().min(0).max(95))
+const defaultMarginSchema = marginPercentageTextSchema.transform(Number)
 
 const optionsSchema = z.object({
   storeDefaultMargin: defaultMarginSchema,

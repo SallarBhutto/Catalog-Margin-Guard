@@ -26,12 +26,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { MarginAnalysisSuccess } from "@/features/analysis/margin-analysis-types"
+import type {
+  MarginAnalysisMetadata,
+  MarginAnalysisSuccess,
+} from "@/features/analysis/margin-analysis-types"
 import { useAuthState } from "@/features/auth/auth-context"
 import {
   AuthenticatedResultsBrowser,
   type ResultsPageQueryService,
 } from "@/features/results/authenticated-results-browser"
+import type { ManualOverrideMutationService } from "@/features/results/manual-override-dialog"
 import {
   formatCount,
   formatMoney,
@@ -52,6 +56,8 @@ type ResultsPageProps = Readonly<{
   numberFormat: NumberFormat
   onStartNewScan: () => Promise<void>
   fullResultsService?: ResultsPageQueryService
+  overrideService?: ManualOverrideMutationService
+  onMetadataChanged?: (metadata: MarginAnalysisMetadata) => void
 }>
 
 function SummarySurface({
@@ -224,7 +230,7 @@ function HighestRiskTable({
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={row.identifier}>
+            <TableRow key={row.rowId}>
               <TableCell
                 className="max-w-64 truncate font-medium text-text-primary"
                 title={row.identifier}
@@ -332,6 +338,8 @@ function ResultsPage({
   numberFormat,
   onStartNewScan,
   fullResultsService,
+  overrideService,
+  onMetadataChanged,
 }: ResultsPageProps) {
   const { status: authStatus, capabilities, requestSignIn } = useAuthState()
   const [confirmNewScan, setConfirmNewScan] = useState(false)
@@ -413,6 +421,8 @@ function ResultsPage({
             currency={currency}
             numberFormat={numberFormat}
             service={fullResultsService}
+            overrideService={overrideService}
+            onMetadataChanged={onMetadataChanged}
           />
         ) : needsAttention > 0 ? (
           <section className="mt-8" aria-labelledby="highest-risk-heading">
@@ -487,7 +497,8 @@ function ResultsPage({
           <DialogHeader>
             <DialogTitle>Start a new scan?</DialogTitle>
             <DialogDescription>
-              Your current analysis will be cleared. Your account will remain signed in.
+              Your current analysis and session-only target overrides will be cleared.
+              Your account will remain signed in.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

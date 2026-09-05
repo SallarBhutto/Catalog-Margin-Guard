@@ -123,7 +123,7 @@ async function measureResultsQueries(page: Page, rowCount: number) {
     const filteredSort = await measure({
       ...baseQuery,
       status: "REVIEW",
-      targetSource: "CATALOG_OVERRIDE",
+      targetSource: "PRODUCT_OVERRIDE",
       sort: "SUPPLIER_COST_DESC",
     })
     const requestedDeepPage = Math.ceil(browserRowCount / baseQuery.pageSize)

@@ -20,12 +20,16 @@ function createHighestRiskPreviewSql(query: HighestRiskPreviewQuery) {
   if (query.sort !== "RISK_HIGHEST") throw new Error("Unsupported result sort.")
 
   return `SELECT
+  CAST(catalog_source_row_id AS VARCHAR) AS row_id,
   display_identifier AS identifier,
   CAST(supplier_cost AS VARCHAR) AS supplier_cost,
   CAST(selling_price AS VARCHAR) AS selling_price,
   CAST(gross_margin_pct AS VARCHAR) AS gross_margin_percent,
   CAST(effective_target_margin_pct AS VARCHAR) AS target_margin_percent,
   target_source,
+  CAST(store_default_margin_pct AS VARCHAR) AS store_default_margin_percent,
+  CAST(catalog_override_margin_pct AS VARCHAR) AS catalog_override_margin_percent,
+  CAST(manual_override_margin_pct AS VARCHAR) AS manual_override_margin_percent,
   CAST(price_for_target_margin AS VARCHAR) AS price_for_target_margin,
   status
 FROM ${ANALYSIS_RESULTS_RELATION}
@@ -44,7 +48,7 @@ LIMIT ${query.limit};`
 }
 
 const STATUS_FILTERS = new Set(["ALL", "LOSS", "REVIEW", "OK"])
-const TARGET_SOURCE_FILTERS = new Set(["ALL", "STORE_DEFAULT", "CATALOG_OVERRIDE"])
+const TARGET_SOURCE_FILTERS = new Set(["ALL", "STORE_DEFAULT", "PRODUCT_OVERRIDE"])
 
 const SORT_EXPRESSIONS: Readonly<Record<ResultSort, string>> = {
   RISK_HIGHEST: `CASE status
@@ -109,7 +113,11 @@ function createResultsSql(query: ResultsQuery, page = query.page): ResultsSql {
   }
   if (query.status !== "ALL") filters.push(`status = '${query.status}'`)
   if (query.targetSource !== "ALL") {
-    filters.push(`target_source = '${query.targetSource}'`)
+    filters.push(
+      query.targetSource === "STORE_DEFAULT"
+        ? "target_source = 'STORE_DEFAULT'"
+        : "target_source IN ('CATALOG_OVERRIDE', 'MANUAL_OVERRIDE')",
+    )
   }
 
   const where = filters.length ? `\nWHERE ${filters.join("\n  AND ")}` : ""
@@ -120,12 +128,16 @@ function createResultsSql(query: ResultsQuery, page = query.page): ResultsSql {
     count: `SELECT count(*)::UBIGINT AS total_rows
 FROM ${ANALYSIS_RESULTS_RELATION}${where};`,
     rows: `SELECT
+  CAST(catalog_source_row_id AS VARCHAR) AS row_id,
   display_identifier AS identifier,
   CAST(supplier_cost AS VARCHAR) AS supplier_cost,
   CAST(selling_price AS VARCHAR) AS selling_price,
   CAST(gross_margin_pct AS VARCHAR) AS gross_margin_percent,
   CAST(effective_target_margin_pct AS VARCHAR) AS target_margin_percent,
   target_source,
+  CAST(store_default_margin_pct AS VARCHAR) AS store_default_margin_percent,
+  CAST(catalog_override_margin_pct AS VARCHAR) AS catalog_override_margin_percent,
+  CAST(manual_override_margin_pct AS VARCHAR) AS manual_override_margin_percent,
   CAST(price_for_target_margin AS VARCHAR) AS price_for_target_margin,
   status
 FROM ${ANALYSIS_RESULTS_RELATION}${where}

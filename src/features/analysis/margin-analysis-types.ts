@@ -2,7 +2,7 @@ import type { DuckDBQueryResult } from "@/lib/duckdb/duckdb-types"
 
 type MatchStatus = "MATCHED" | "SUPPLIER_ONLY" | "CATALOG_ONLY"
 type ProductAnalysisStatus = "LOSS" | "REVIEW" | "OK"
-type TargetSource = "CATALOG_OVERRIDE" | "STORE_DEFAULT"
+type TargetSource = "CATALOG_OVERRIDE" | "MANUAL_OVERRIDE" | "STORE_DEFAULT"
 
 type AnalysisRelationName =
   | "unique_supplier_identifiers"

@@ -54,12 +54,16 @@ function result(
 
 function previewRow(index: number): MarginResultRow {
   return {
+    rowId: String(index + 1),
     identifier: `SKU-${String(index).padStart(2, "0")}`,
     supplierCost: "10.0000",
     sellingPrice: "9.0000",
     grossMarginPercent: "-11.111111111111",
     targetMarginPercent: "20.0000",
     targetSource: "STORE_DEFAULT",
+    storeDefaultMarginPercent: "20.0000",
+    catalogOverrideMarginPercent: null,
+    manualOverrideMarginPercent: null,
     priceForTargetMargin: "12.50",
     status: "LOSS",
   }
@@ -70,12 +74,16 @@ function resultPageRow(
   status: MarginResultRow["status"],
 ): MarginResultRow {
   return {
+    rowId: identifier.replace(/\D/g, "") || "1",
     identifier,
     supplierCost: "10.0000",
     sellingPrice: status === "LOSS" ? "9.0000" : "20.0000",
     grossMarginPercent: status === "LOSS" ? "-11.111111111111" : "50.000000000000",
     targetMarginPercent: "20.0000",
     targetSource: "STORE_DEFAULT",
+    storeDefaultMarginPercent: "20.0000",
+    catalogOverrideMarginPercent: null,
+    manualOverrideMarginPercent: null,
     priceForTargetMargin: "12.50",
     status,
   }
@@ -308,5 +316,84 @@ describe("anonymous results", () => {
 
     expect(screen.getByText("CURRENT-LOSS")).toBeVisible()
     expect(screen.queryByText("STALE-OK")).not.toBeInTheDocument()
+  })
+
+  it("does not let a pre-override query overwrite the post-override refresh", async () => {
+    const analysis = result(0, 1, 1)
+    const stale = deferred<{
+      rows: readonly MarginResultRow[]
+      totalRows: number
+      page: number
+      pageSize: 100
+    }>()
+    const original = resultPageRow("ORIGINAL-1", "REVIEW")
+    const updated = {
+      ...resultPageRow("UPDATED-1", "REVIEW"),
+      targetMarginPercent: "35.5000",
+      targetSource: "MANUAL_OVERRIDE" as const,
+      manualOverrideMarginPercent: "35.5000",
+    }
+    let request = 0
+    const getResultsPage = vi.fn(() => {
+      request += 1
+      if (request === 2) return stale.promise
+      return Promise.resolve({
+        rows: request === 1 ? [original] : [updated],
+        totalRows: 1,
+        page: 1,
+        pageSize: 100 as const,
+      })
+    })
+    const apply = vi.fn(() => Promise.resolve({ metadata: analysis.metadata }))
+
+    render(
+      <AuthStateProvider status="authenticated" requestSignIn={() => undefined}>
+        <ResultsPage
+          result={analysis}
+          previewRows={[]}
+          currency="USD"
+          numberFormat="US"
+          onStartNewScan={() => Promise.resolve()}
+          fullResultsService={{ getResultsPage }}
+          overrideService={{
+            apply,
+            remove: vi.fn(() => Promise.resolve({ metadata: analysis.metadata })),
+          }}
+        />
+      </AuthStateProvider>,
+    )
+
+    expect(await screen.findByText("ORIGINAL-1")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Needs Review" }))
+    await waitFor(() => expect(getResultsPage).toHaveBeenCalledTimes(2))
+    fireEvent.click(screen.getByRole("button", { name: "Set target for ORIGINAL-1" }))
+    fireEvent.change(screen.getByLabelText("Manual override"), {
+      target: { value: "35.5" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save Override" }))
+
+    expect(await screen.findByText("UPDATED-1")).toBeVisible()
+    expect(screen.getByText("Manual Override")).toBeVisible()
+    expect(apply).toHaveBeenCalledWith("1", "35.5", {
+      canUseManualOverrides: true,
+      canExportResults: true,
+      canPaginateFullResults: true,
+      canSearchFullResults: true,
+      canViewFullResults: true,
+      resultPreviewLimit: null,
+    })
+
+    await act(async () => {
+      stale.resolve({
+        rows: [{ ...original, identifier: "STALE-1" }],
+        totalRows: 1,
+        page: 1,
+        pageSize: 100,
+      })
+      await stale.promise
+    })
+
+    expect(screen.getByText("UPDATED-1")).toBeVisible()
+    expect(screen.queryByText("STALE-1")).not.toBeInTheDocument()
   })
 })
