@@ -1,9 +1,14 @@
 export type DuckDBEngineErrorCode =
-  "DUCKDB_INITIALIZATION_FAILED" | "DUCKDB_HEALTH_CHECK_FAILED" | "DUCKDB_ENGINE_DISPOSED"
+  | "DUCKDB_INITIALIZATION_FAILED"
+  | "DUCKDB_UNSUPPORTED_BROWSER"
+  | "DUCKDB_HEALTH_CHECK_FAILED"
+  | "DUCKDB_ENGINE_DISPOSED"
 
 const ERROR_MESSAGES: Readonly<Record<DuckDBEngineErrorCode, string>> = {
   DUCKDB_INITIALIZATION_FAILED:
     "We couldn't prepare local analysis in this browser. Try again or use a current desktop browser.",
+  DUCKDB_UNSUPPORTED_BROWSER:
+    "This browser is not supported: it is missing a feature the local analysis engine needs. Use a current version of Chrome, Edge, Firefox, or Safari. Your files have not left this computer.",
   DUCKDB_HEALTH_CHECK_FAILED:
     "Local analysis did not start correctly. Try preparing it again.",
   DUCKDB_ENGINE_DISPOSED:

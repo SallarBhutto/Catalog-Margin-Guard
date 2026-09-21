@@ -215,11 +215,11 @@ Analyze Complete Catalog Locally
       ↓
 Show Complete Summary
       ↓
-Show Highest-Risk Products
+Show Complete Margin Exposure and Data Quality
       ↓
-"We found N products needing attention"
+Show Real Attention Count + Locked Product Detail
       ↓
-See All Results — Free
+Reveal My Results — Free
       ↓
 Sign In
       ↓
@@ -312,6 +312,9 @@ v0 must support:
 CSV is the priority format for large catalogs.
 
 ## 10.2 Excel
+
+> **First public beta:** Excel (`.xlsx`) input is deferred. The beta accepts CSV and TSV
+> only, the interface says so, and users with Excel data export it as CSV first.
 
 v0 should also support:
 
@@ -1118,10 +1121,12 @@ Anonymous users may:
 - see the complete summary metrics
 - see the complete margin distribution
 - see the complete Data Quality summary
-- see up to 20 highest-risk products
+- see the true count of products needing attention, calculated as LOSS + REVIEW
+- see the real product-result table headers and synthetic redacted row geometry
 
 Anonymous users may not:
 
+- see any readable product-level result row or value
 - see the unrestricted complete results table
 - paginate through the complete dataset
 - perform unrestricted full-dataset identifier search
@@ -1132,21 +1137,25 @@ Browser/device safety limitations still apply regardless of authentication statu
 
 ---
 
-# 33. Anonymous Result Preview
+# 33. Anonymous Detailed-Result Gate
 
-The anonymous result preview is limited to a configurable maximum of **20 products**.
+The complete catalog analysis still runs locally before authentication. Anonymous proof
+of value comes from the real complete summary, Margin Exposure distribution, Data Quality
+summary, and the true attention count (`LOSS + REVIEW`).
 
-It must show the highest-risk products, not a random sample.
+When one or more products need attention, the **Highest Risk Products** section must show:
 
-Priority order:
+- the true attention-product count with correct singular/plural wording
+- the real result-table column headers
+- approximately 4–5 synthetic redacted rows that preserve table geometry
+- concise copy stating that the full catalog has already been analyzed locally
+- a **Reveal My Results — Free** sign-in CTA
+- concise no-payment and files-stay-local reassurance
 
-1. LOSS first
-2. REVIEW second
-3. lower gross margin first within those groups
-
-If fewer than 20 products need attention, show all of them.
-
-The preview is primarily intended to expose LOSS and REVIEW products.
+Synthetic rows must contain no fake product values and no actual customer result values.
+Actual product-level values must not exist in anonymous HTML, DOM attributes, hidden
+content, titles, data attributes, or accessibility output. Applying CSS blur to real rows
+does not satisfy this requirement.
 
 Example result area:
 
@@ -1163,29 +1172,24 @@ Average Gross Margin
 [complete Margin Exposure]
 
 Highest Risk Products
+1,233 products need attention. Reveal the products with the highest margin risk.
 
-SKU       Cost      Price      Margin     Target      Status
-KLP-91    $151      $149       -1.34%      20%        LOSS
-ABC-12     $96      $105        8.57%      10%        REVIEW
-...
+SKU | Supplier Cost | Selling Price | Gross Margin | Target Margin | Price for Target | Status
+[synthetic redacted table rows]
+
+Your detailed results are ready
+Your full catalog has already been analyzed locally.
+Sign in free to reveal your highest-risk products and explore the complete report.
+
+[ Reveal My Results — Free ]
+
+No payment or credit card required.
+Files stay on your computer.
 ```
 
-After the preview, communicate how much remains locked.
-
-Example:
-
-```text
-Showing 20 of 1,233 products needing attention.
-1,213 more products are hidden.
-
-[ See All Results — Free ]
-
-✓ No credit card
-✓ Files stay on your computer
-✓ Signing in does not upload your catalog
-```
-
-Do not imply payment is required.
+If no products need attention, keep the positive result state and do not show fake
+redacted risk rows. If no products are analyzable, keep the Data Quality-focused state;
+sign-in must not be presented as the solution to invalid source data.
 
 ---
 
@@ -1207,9 +1211,9 @@ Flow:
 ```text
 Anonymous analysis completed
         ↓
-User sees summary + preview
+User sees complete aggregates + locked product detail
         ↓
-User clicks See All Results — Free
+User clicks Reveal My Results — Free
         ↓
 Sign-in opens without resetting the analysis
         ↓
@@ -1233,7 +1237,7 @@ If authentication fails:
 
 - preserve the selected files while the current page/session remains active
 - preserve the completed anonymous analysis
-- preserve the anonymous preview
+- preserve the anonymous aggregate results and locked-detail state
 - allow the user to retry authentication
 
 Authentication failure must not force the user to restart the scan.
@@ -1404,6 +1408,15 @@ Suggested filename:
 catalog-margin-report-YYYY-MM-DD.csv
 ```
 
+Both reports always cover the complete current analysis, including session manual
+overrides. They are independent of the results table's search, filters, sort order, and
+pagination, and the interface says so. Rows are ordered by risk: LOSS, then REVIEW, then OK,
+with the lowest gross margin first within each status.
+
+`target_source` is written as `Store Default`, `Product Override` (catalog override), or
+`Manual Override`. If no products need review, Products To Review is unavailable with an
+explanation and no empty file is created.
+
 ## 38.3 Export Safety
 
 Exports must correctly handle user-derived text that could be interpreted as spreadsheet formulas.
@@ -1425,6 +1438,14 @@ CSV output must also correctly handle:
 
 Generated monetary and percentage columns should remain numeric where appropriate.
 
+Protected identifier text is prefixed with a single apostrophe and quoted. The apostrophe
+is part of the exported value and is normally visible as the first character. This lowers
+the risk when the generated file is opened; it is not a guarantee for every spreadsheet
+application, and it does not survive other tools opening, editing, and re-saving the file.
+Identifier text such as leading zeros is preserved in the file itself; a spreadsheet
+application that opens a CSV directly may still reformat such values unless the column is
+imported as text.
+
 ## 38.4 Anonymous Export Gate
 
 If an anonymous user attempts export, use copy such as:
@@ -1434,7 +1455,7 @@ If an anonymous user attempts export, use copy such as:
 Use terms such as:
 
 - Sign in free
-- See All Results — Free
+- Reveal My Results — Free
 
 Do not use:
 
@@ -1510,7 +1531,7 @@ When a signed-in user signs out:
 
 Previously unlocked complete-result rows must not remain exposed in the rendered interface after sign-out.
 
-If safely possible, the active analysis may remain available in memory so the user returns to the anonymous preview. If this would risk leaking previously unlocked data, privacy wins and the active analysis should be cleared.
+If safely possible, the active analysis may remain available in memory so the user returns to the anonymous aggregate results and locked product-detail treatment. If this would risk leaking previously unlocked data, privacy wins and the active analysis should be cleared.
 
 ---
 
@@ -1669,9 +1690,9 @@ Recommended order:
 2. LOSS / REVIEW / OK summary
 3. average gross margin
 4. complete Margin Exposure distribution
-5. highest-risk product preview
-6. count of additional hidden attention products
-7. See All Results — Free CTA
+5. Highest Risk Products with the true attention count
+6. real table headers and synthetic redacted rows
+7. Reveal My Results — Free CTA
 8. privacy reassurance
 9. Data Quality summary
 
@@ -1691,14 +1712,13 @@ Margin Exposure
 ...
 
 Highest Risk Products
-...
+1,233 products need attention. Reveal the products with the highest margin risk.
 
-Showing 20 of 1,233 products needing attention.
-1,213 more products are hidden.
+[redacted table geometry; no customer row values]
 
-[ See All Results — Free ]
+[ Reveal My Results — Free ]
 
-No credit card required.
+No payment or credit card required.
 Your files stay on your computer.
 
 Data Quality
@@ -2026,8 +2046,8 @@ v0 is product-complete when all of the following are true.
 35. Anonymous users see the complete summary.
 36. Anonymous users see the complete Margin Exposure distribution.
 37. Anonymous users see the complete Data Quality summary.
-38. Anonymous users see no more than the configured 20 highest-risk attention products.
-39. The preview prioritizes LOSS, then REVIEW, then lowest margin.
+38. Anonymous users see the true number of products needing attention (`LOSS + REVIEW`).
+39. Anonymous users see real result-table headers and synthetic redacted rows, but no actual product-level result values in DOM or accessibility output.
 40. Anonymous users cannot browse unrestricted full results.
 41. Anonymous users cannot export reports.
 42. Anonymous users cannot create manual product overrides.
@@ -2083,7 +2103,7 @@ We want to learn:
 - Do visitors start a catalog scan before signing up?
 - What percentage complete an analysis successfully?
 - How often does the analysis find LOSS or REVIEW products?
-- What percentage of users click **See All Results — Free** after seeing the preview?
+- What percentage of users click **Reveal My Results — Free** after seeing the locked detail section?
 - What percentage successfully sign in after analysis?
 - Do signed-in users use search/filtering?
 - Do users export Products To Review or the Full Margin Report?

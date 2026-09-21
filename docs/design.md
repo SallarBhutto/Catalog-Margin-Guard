@@ -1480,33 +1480,46 @@ Show:
 - complete summary
 - complete margin exposure
 - complete data-quality summary
-- up to 20 highest-risk rows
+- the true number of products needing attention
+- the real Highest Risk Products table headers
+- 4–5 synthetic redacted rows that communicate table geometry without product values
 
-The table should simply stop at the allowed preview.
+The Highest Risk Products section is the primary conversion hook. It should remain a
+restrained table surface, with modest additional vertical space and centered unlock copy
+inside that surface.
 
-Do not render hidden rows behind a CSS blur.
+Actual customer rows must never be rendered underneath CSS blur or masking. They must not
+appear in text nodes, hidden elements, attributes, titles, data attributes, or
+accessibility-only content. Redacted rows are safe decorative shapes only; do not invent
+fake SKU, price, margin, target, or status values.
 
 Do not create a fake disabled pagination UI over data already present in the DOM.
 
-After the preview, show a clean conversion surface.
+Within the locked table surface, show a focused conversion treatment.
 
 Example:
 
 ```text
-1,213 more products need attention.
+1,233 products need attention. Reveal the products with the highest margin risk.
 
-Sign in free to review the complete results, search your catalog,
-set individual targets, and download reports.
+[table headers]
+[synthetic redacted table rows]
 
-[ See All Results — Free ]
+Your detailed results are ready
 
-No credit card required.
-🔒 Signing in does not upload your catalog.
+Your full catalog has already been analyzed locally.
+Sign in free to reveal your highest-risk products and explore the complete report.
+
+[ Reveal My Results — Free ]
+
+No payment or credit card required.
+Files stay on your computer.
 ```
 
 Visual treatment:
 
-- one bordered brand-soft panel
+- white or near-white inset surface using existing border and radius tokens
+- subtle redaction blocks with normal row separators and aligned column geometry
 - clear CTA
 - no dark overlay
 - no manipulative countdown
@@ -1775,7 +1788,7 @@ Use for:
 
 - Check My Catalog
 - Analyze Catalog
-- See All Results — Free
+- Reveal My Results — Free
 - Save Override
 
 Style:
@@ -2069,6 +2082,13 @@ Do not use giant export cards.
 
 Show that exports are created locally only when privacy reassurance is useful.
 
+v0 uses the two-secondary-button alternative in one compact "Download reports" surface
+placed after the results table and before Data Quality. It states that reports cover the
+complete analysis rather than the current page, search, or filters. While a report is
+prepared, both buttons are disabled, a status line shows real row progress, and a text
+Cancel action is available. Completion, an empty report, cancellation, and failure are
+reported inline; failure uses alert semantics. Anonymous users see no export controls.
+
 ---
 
 # 63. Footer
@@ -2172,7 +2192,7 @@ loading/analyzing
 ## Results
 
 ```text
-anonymous preview
+anonymous locked product detail
 authenticated full access
 empty attention set
 error
@@ -2348,7 +2368,7 @@ Do not introduce:
 - oversized pills everywhere
 - marketing banners inside results
 - disabled teaser controls over the entire authenticated feature set
-- blurred sensitive rows to simulate a paywall
+- blurred actual sensitive rows to simulate a paywall
 - fake progress percentages
 - fake activity/history
 - fake customer logos/testimonials
@@ -2372,8 +2392,8 @@ UI is considered visually complete when:
 10. The results table remains compact and easy to scan.
 11. Numeric columns are right-aligned and use tabular numbers.
 12. Statuses are represented with text, not color alone.
-13. Anonymous users see real results before the sign-in gate.
-14. The sign-in gate does not use blur/dark-overlay manipulation.
+13. Anonymous users see real complete aggregate results before the sign-in gate.
+14. The sign-in gate uses only synthetic redacted geometry; no actual customer row value exists underneath blur/masking or in accessibility output.
 15. Sign-in privacy messaging is clear.
 16. Signed-in search/filter/sort/pagination controls are compact and understandable.
 17. Manual target editing clearly explains default, catalog, and manual target sources.

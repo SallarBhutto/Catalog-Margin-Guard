@@ -1,9 +1,12 @@
 import { Check, Circle, LoaderCircle } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import type { AnalysisStage } from "@/features/analysis/margin-analysis-types"
 
 type AnalysisProgressProps = Readonly<{
   stage: AnalysisStage
+  onCancel: () => void
+  isCancelling: boolean
 }>
 
 const STAGES: readonly Readonly<{ id: AnalysisStage; label: string }>[] = [
@@ -12,7 +15,7 @@ const STAGES: readonly Readonly<{ id: AnalysisStage; label: string }>[] = [
   { id: "preparing-results", label: "Preparing results" },
 ]
 
-function AnalysisProgress({ stage }: AnalysisProgressProps) {
+function AnalysisProgress({ stage, onCancel, isCancelling }: AnalysisProgressProps) {
   const activeIndex = STAGES.findIndex((item) => item.id === stage)
 
   return (
@@ -84,6 +87,21 @@ function AnalysisProgress({ stage }: AnalysisProgressProps) {
             Your files are being processed locally in this browser. Large catalogs may
             take a little longer.
           </p>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onCancel}
+              disabled={isCancelling}
+            >
+              {isCancelling ? "Cancelling…" : "Cancel Analysis"}
+            </Button>
+            {isCancelling && (
+              <p className="text-[13px] leading-[18px] text-text-secondary" role="status">
+                Stopping the analysis. Your files stay selected.
+              </p>
+            )}
+          </div>
         </section>
       </div>
     </main>

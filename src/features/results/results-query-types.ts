@@ -44,11 +44,6 @@ type ResultSort =
   | "PRICE_FOR_TARGET_ASC"
   | "PRICE_FOR_TARGET_DESC"
 
-type HighestRiskPreviewQuery = Readonly<{
-  limit: number
-  sort: "RISK_HIGHEST"
-}>
-
 type ResultsQuery = Readonly<{
   search?: string
   status: ResultStatusFilter
@@ -67,7 +62,6 @@ type ResultsPage = Readonly<{
 
 export { DEFAULT_RESULT_PAGE_SIZE, RESULT_PAGE_SIZES }
 export type {
-  HighestRiskPreviewQuery,
   MarginResultRow,
   ResultPageSize,
   ResultSort,

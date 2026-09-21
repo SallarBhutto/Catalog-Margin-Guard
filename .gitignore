@@ -9,3 +9,4 @@ test-results
 *.local
 .DS_Store
 pnpm-debug.log*
+dist-e2e

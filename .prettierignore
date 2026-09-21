@@ -6,3 +6,4 @@ pnpm-lock.yaml
 AGENTS.md
 .agents
 docs
+dist-e2e

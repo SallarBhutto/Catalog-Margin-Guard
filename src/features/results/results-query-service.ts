@@ -1,10 +1,8 @@
 import {
-  createHighestRiskPreviewSql,
   createResultsSql,
   validateResultsQuery,
 } from "@/features/results/results-query-sql"
 import type {
-  HighestRiskPreviewQuery,
   MarginResultRow,
   ResultsPage,
   ResultsQuery,
@@ -12,7 +10,7 @@ import type {
 import { duckDBEngine } from "@/lib/duckdb"
 import type { DuckDBConnection, DuckDBQueryResult } from "@/lib/duckdb/duckdb-types"
 
-type ResultsQueryConnection = Pick<DuckDBConnection, "prepare" | "query">
+type ResultsQueryConnection = Pick<DuckDBConnection, "prepare">
 type ResultsQueryEngine = Readonly<{
   withConnection<T>(
     operation: (connection: ResultsQueryConnection) => Promise<T>,
@@ -115,16 +113,6 @@ class ResultsQueryService {
       if (import.meta.env.DEV) console.info(`[Catalog Margin Guard] ${message}`)
     },
   ) {}
-
-  async getHighestRiskPreview(
-    query: HighestRiskPreviewQuery,
-  ): Promise<readonly MarginResultRow[]> {
-    const sql = createHighestRiskPreviewSql(query)
-    const result = await this.engine.withConnection((connection) => connection.query(sql))
-    const rows = mapMarginResultRows(result)
-    this.log("preview query completed")
-    return rows
-  }
 
   async getResultsPage(query: ResultsQuery): Promise<ResultsPage> {
     validateResultsQuery(query)

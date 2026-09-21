@@ -52,23 +52,6 @@ function result(
   }
 }
 
-function previewRow(index: number): MarginResultRow {
-  return {
-    rowId: String(index + 1),
-    identifier: `SKU-${String(index).padStart(2, "0")}`,
-    supplierCost: "10.0000",
-    sellingPrice: "9.0000",
-    grossMarginPercent: "-11.111111111111",
-    targetMarginPercent: "20.0000",
-    targetSource: "STORE_DEFAULT",
-    storeDefaultMarginPercent: "20.0000",
-    catalogOverrideMarginPercent: null,
-    manualOverrideMarginPercent: null,
-    priceForTargetMargin: "12.50",
-    status: "LOSS",
-  }
-}
-
 function resultPageRow(
   identifier: string,
   status: MarginResultRow["status"],
@@ -97,16 +80,12 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-function renderResults(
-  analysis: MarginAnalysisSuccess,
-  rows: readonly MarginResultRow[],
-) {
+function renderResults(analysis: MarginAnalysisSuccess) {
   const requestSignIn = vi.fn()
   render(
     <AuthStateProvider status="anonymous" requestSignIn={requestSignIn}>
       <ResultsPage
         result={analysis}
-        previewRows={rows}
         currency="USD"
         numberFormat="US"
         onStartNewScan={() => Promise.resolve()}
@@ -117,40 +96,50 @@ function renderResults(
 }
 
 describe("anonymous results", () => {
-  it("shows the actual hidden attention count and free sign-in gate", () => {
-    renderResults(
-      result(25, 10, 4),
-      Array.from({ length: 20 }, (_, index) => previewRow(index)),
-    )
+  it("shows the real attention count and a synthetic locked results table", () => {
+    const requestSignIn = renderResults(result(25, 10, 4))
 
-    expect(screen.getByText("Showing 20 of 35 products needing attention.")).toBeVisible()
-    expect(screen.getByText("15 more products are hidden.")).toBeVisible()
-    expect(screen.getByRole("button", { name: "See All Results — Free" })).toBeEnabled()
-    expect(screen.getAllByRole("row")).toHaveLength(21)
+    expect(
+      screen.getByText(
+        "35 products need attention. Reveal the products with the highest margin risk.",
+      ),
+    ).toBeVisible()
+    expect(screen.getByText("Your detailed results are ready")).toBeVisible()
+    expect(
+      screen.getByText(/Your full catalog has already been analyzed locally/),
+    ).toBeVisible()
+    expect(screen.getByRole("button", { name: "Reveal My Results — Free" })).toBeEnabled()
+    expect(screen.getByText("No payment or credit card required.")).toBeVisible()
+    expect(screen.getByText("Files stay on your computer.")).toBeVisible()
+    expect(screen.getAllByTestId("redacted-result-row")).toHaveLength(5)
+    expect(
+      screen.getByRole("table", {
+        name: "Detailed product results available after free sign-in",
+      }),
+    ).toBeVisible()
+    for (const header of [
+      "SKU",
+      "Supplier Cost",
+      "Selling Price",
+      "Gross Margin",
+      "Target Margin",
+      "Price for Target Margin",
+      "Status",
+    ]) {
+      expect(screen.getByRole("columnheader", { name: header })).toBeVisible()
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Reveal My Results — Free" }))
+    expect(requestSignIn).toHaveBeenCalledOnce()
   })
 
-  it("does not invent hidden results or a gate when every attention row is shown", () => {
-    renderResults(
-      result(2, 3, 5),
-      Array.from({ length: 5 }, (_, index) => previewRow(index)),
-    )
-
-    expect(screen.queryByText(/more products are hidden/i)).not.toBeInTheDocument()
+  it("uses singular attention-count copy", () => {
+    renderResults(result(1, 0, 4))
     expect(
-      screen.queryByRole("button", { name: "See All Results — Free" }),
-    ).not.toBeInTheDocument()
-  })
-
-  it("does not claim hidden products when exactly 20 attention rows are shown", () => {
-    renderResults(
-      result(10, 10, 5),
-      Array.from({ length: 20 }, (_, index) => previewRow(index)),
-    )
-
-    expect(screen.queryByText(/more products are hidden/i)).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole("button", { name: "See All Results — Free" }),
-    ).not.toBeInTheDocument()
+      screen.getByText(
+        "1 product needs attention. Reveal the products with the highest margin risk.",
+      ),
+    ).toBeVisible()
   })
 
   it("shows deliberate zero-risk and zero-analyzable states", () => {
@@ -158,7 +147,6 @@ describe("anonymous results", () => {
       <AuthStateProvider status="anonymous" requestSignIn={() => undefined}>
         <ResultsPage
           result={result(0, 0, 7)}
-          previewRows={[]}
           currency="USD"
           numberFormat="US"
           onStartNewScan={() => Promise.resolve()}
@@ -167,11 +155,11 @@ describe("anonymous results", () => {
     )
     expect(screen.getByText("No products currently need margin review.")).toBeVisible()
     expect(
-      screen.queryByRole("button", { name: "See All Results — Free" }),
+      screen.queryByRole("button", { name: "Reveal My Results — Free" }),
     ).not.toBeInTheDocument()
 
     unmount()
-    renderResults(result(0, 0, 0), [])
+    renderResults(result(0, 0, 0))
     expect(
       screen.getByText("We couldn't calculate margins for any matched products."),
     ).toBeVisible()
@@ -181,7 +169,6 @@ describe("anonymous results", () => {
 
   it("replaces the preview with full browsing controls after authentication", async () => {
     const analysis = result(25, 10, 4)
-    const rows = Array.from({ length: 20 }, (_, index) => previewRow(index))
     const fullRows = [resultPageRow("LOSS-1", "LOSS"), resultPageRow("OK-1", "OK")]
     const getResultsPage = vi.fn(() =>
       Promise.resolve({ rows: fullRows, totalRows: 39, page: 1, pageSize: 100 as const }),
@@ -190,7 +177,6 @@ describe("anonymous results", () => {
       <AuthStateProvider status="anonymous" requestSignIn={() => undefined}>
         <ResultsPage
           result={analysis}
-          previewRows={rows}
           currency="USD"
           numberFormat="US"
           onStartNewScan={() => Promise.resolve()}
@@ -199,13 +185,15 @@ describe("anonymous results", () => {
       </AuthStateProvider>,
     )
 
-    expect(screen.getByRole("button", { name: "See All Results — Free" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Reveal My Results — Free" })).toBeVisible()
+    expect(getResultsPage).not.toHaveBeenCalled()
+    expect(screen.queryByText("LOSS-1")).not.toBeInTheDocument()
+    expect(screen.queryByText("OK-1")).not.toBeInTheDocument()
 
     rerender(
       <AuthStateProvider status="authenticated" requestSignIn={() => undefined}>
         <ResultsPage
           result={analysis}
-          previewRows={rows}
           currency="USD"
           numberFormat="US"
           onStartNewScan={() => Promise.resolve()}
@@ -216,7 +204,7 @@ describe("anonymous results", () => {
 
     await waitFor(() => expect(getResultsPage).toHaveBeenCalledOnce())
     expect(
-      screen.queryByRole("button", { name: "See All Results — Free" }),
+      screen.queryByRole("button", { name: "Reveal My Results — Free" }),
     ).not.toBeInTheDocument()
     expect(
       screen.getByRole("searchbox", { name: "Search product identifier" }),
@@ -234,7 +222,6 @@ describe("anonymous results", () => {
       <AuthStateProvider status="anonymous" requestSignIn={() => undefined}>
         <ResultsPage
           result={analysis}
-          previewRows={rows}
           currency="USD"
           numberFormat="US"
           onStartNewScan={() => Promise.resolve()}
@@ -245,8 +232,12 @@ describe("anonymous results", () => {
 
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument()
     expect(screen.queryByText("OK-1")).not.toBeInTheDocument()
-    expect(screen.getByRole("table", { name: "Highest risk products" })).toBeVisible()
-    expect(screen.getByRole("button", { name: "See All Results — Free" })).toBeVisible()
+    expect(
+      screen.getByRole("table", {
+        name: "Detailed product results available after free sign-in",
+      }),
+    ).toBeVisible()
+    expect(screen.getByRole("button", { name: "Reveal My Results — Free" })).toBeVisible()
   })
 
   it("does not expose privileged controls while auth is loading", () => {
@@ -254,7 +245,6 @@ describe("anonymous results", () => {
       <AuthStateProvider status="loading" requestSignIn={() => undefined}>
         <ResultsPage
           result={result(25, 10, 4)}
-          previewRows={Array.from({ length: 20 }, (_, index) => previewRow(index))}
           currency="USD"
           numberFormat="US"
           onStartNewScan={() => Promise.resolve()}
@@ -266,6 +256,9 @@ describe("anonymous results", () => {
     expect(
       screen.queryByRole("combobox", { name: "Sort results" }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "Reveal My Results — Free" }),
+    ).toBeDisabled()
     expect(screen.getByText("Checking sign-in status…")).toBeVisible()
   })
 
@@ -291,7 +284,6 @@ describe("anonymous results", () => {
       <AuthStateProvider status="authenticated" requestSignIn={() => undefined}>
         <ResultsPage
           result={result(25, 10, 4)}
-          previewRows={Array.from({ length: 20 }, (_, index) => previewRow(index))}
           currency="USD"
           numberFormat="US"
           onStartNewScan={() => Promise.resolve()}
@@ -350,7 +342,6 @@ describe("anonymous results", () => {
       <AuthStateProvider status="authenticated" requestSignIn={() => undefined}>
         <ResultsPage
           result={analysis}
-          previewRows={[]}
           currency="USD"
           numberFormat="US"
           onStartNewScan={() => Promise.resolve()}
@@ -380,7 +371,6 @@ describe("anonymous results", () => {
       canPaginateFullResults: true,
       canSearchFullResults: true,
       canViewFullResults: true,
-      resultPreviewLimit: null,
     })
 
     await act(async () => {

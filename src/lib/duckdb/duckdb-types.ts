@@ -19,6 +19,9 @@ export type DuckDBQueryResult = {
   }
 }
 
+/** One chunk of a streamed result. Only a bounded number of rows is held at a time. */
+export type DuckDBRecordBatch = Pick<DuckDBQueryResult, "getChild" | "numRows">
+
 export type DuckDBPreparedStatement = {
   query(...params: unknown[]): Promise<DuckDBQueryResult>
   close(): Promise<void>
@@ -26,6 +29,13 @@ export type DuckDBPreparedStatement = {
 
 export type DuckDBConnection = {
   query(sql: string): Promise<DuckDBQueryResult>
+  /** Streams a result as record batches instead of materializing every row at once. */
+  send(
+    sql: string,
+    allowStreamResult?: boolean,
+  ): Promise<AsyncIterable<DuckDBRecordBatch>>
+  /** Cancels the statement started by `send`. */
+  cancelSent(): Promise<boolean>
   prepare(sql: string): Promise<DuckDBPreparedStatement>
   close(): Promise<void>
 }
@@ -48,6 +58,8 @@ export type DuckDBRuntimeResources = {
   database: DuckDBDatabase
   mainModule: string
   pthreadWorker: string | null
+  /** Releases a temporary module copy after DuckDB has compiled it. */
+  releaseModule?: () => void
 }
 
 export type DuckDBRuntimeLoader = () => Promise<DuckDBRuntimeResources>

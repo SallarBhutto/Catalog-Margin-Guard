@@ -15,6 +15,7 @@
   },
   "include": [
     "vite.config.ts",
+    "deployment",
     "vitest.config.ts",
     "playwright.config.ts",
     "eslint.config.js"

@@ -46,3 +46,50 @@ test("sign-in stays in context and explains the privacy boundary", async ({ page
   await expect(landingHeading).toBeAttached()
   expect(new URL(page.url()).pathname).toBe("/")
 })
+
+test("sign-in and sign-out from the landing page stay client-side", async ({ page }) => {
+  let mainFrameNavigations = 0
+  let documentRequests = 0
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) mainFrameNavigations += 1
+  })
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      documentRequests += 1
+    }
+  })
+
+  await page.goto("/")
+  const landingHeading = page.locator("#main-content h1")
+  await expect(landingHeading).toHaveText("Find products quietly eating your margin.")
+  const navigationsAfterLoad = mainFrameNavigations
+  const documentRequestsAfterLoad = documentRequests
+  await page.evaluate(() => {
+    ;(window as typeof window & { __documentMarker?: symbol }).__documentMarker =
+      Symbol("landing-document")
+  })
+  const documentSurvived = () =>
+    page.evaluate(
+      () =>
+        typeof (window as typeof window & { __documentMarker?: symbol })
+          .__documentMarker === "symbol",
+    )
+
+  await page.getByRole("button", { name: "Sign in" }).click()
+  await page.getByRole("button", { name: "Complete sign in" }).click()
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible()
+  await expect(landingHeading).toHaveText("Find products quietly eating your margin.")
+  expect(new URL(page.url()).pathname).toBe("/")
+  expect(mainFrameNavigations).toBe(navigationsAfterLoad)
+  expect(documentRequests).toBe(documentRequestsAfterLoad)
+
+  expect(await documentSurvived()).toBe(true)
+
+  await page.getByRole("button", { name: "Sign out" }).click()
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible()
+  await expect(landingHeading).toHaveText("Find products quietly eating your margin.")
+  expect(new URL(page.url()).pathname).toBe("/")
+  expect(mainFrameNavigations).toBe(navigationsAfterLoad)
+  expect(documentRequests).toBe(documentRequestsAfterLoad)
+  expect(await documentSurvived()).toBe(true)
+})

@@ -8,12 +8,7 @@ export type AccessCapabilities = {
   readonly canPaginateFullResults: boolean
   readonly canExportResults: boolean
   readonly canUseManualOverrides: boolean
-  readonly resultPreviewLimit: number | null
 }
-
-export const ACCESS_LIMITS = {
-  anonymousResultPreview: 20,
-} as const
 
 const ACCESS_CAPABILITIES: Readonly<Record<AccessLevel, AccessCapabilities>> = {
   anonymous: {
@@ -22,7 +17,6 @@ const ACCESS_CAPABILITIES: Readonly<Record<AccessLevel, AccessCapabilities>> = {
     canPaginateFullResults: false,
     canExportResults: false,
     canUseManualOverrides: false,
-    resultPreviewLimit: ACCESS_LIMITS.anonymousResultPreview,
   },
   authenticated: {
     canViewFullResults: true,
@@ -30,7 +24,6 @@ const ACCESS_CAPABILITIES: Readonly<Record<AccessLevel, AccessCapabilities>> = {
     canPaginateFullResults: true,
     canExportResults: true,
     canUseManualOverrides: true,
-    resultPreviewLimit: null,
   },
 }
 
@@ -43,8 +36,4 @@ function getAccessCapabilities(authStatus: AuthStatus): AccessCapabilities {
   return ACCESS_CAPABILITIES[getAccessLevel(authStatus)]
 }
 
-function getBoundedPreviewLimit(capabilities: AccessCapabilities) {
-  return capabilities.resultPreviewLimit ?? ACCESS_LIMITS.anonymousResultPreview
-}
-
-export { getAccessCapabilities, getBoundedPreviewLimit }
+export { getAccessCapabilities }

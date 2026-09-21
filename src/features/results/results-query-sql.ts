@@ -1,51 +1,9 @@
 import { ANALYSIS_RESULTS_RELATION } from "@/features/analysis/margin-analysis-sql"
 import {
   RESULT_PAGE_SIZES,
-  type HighestRiskPreviewQuery,
   type ResultSort,
   type ResultsQuery,
 } from "@/features/results/results-query-types"
-
-const MAX_BOUNDED_RESULT_ROWS = 250
-
-function assertBoundedLimit(limit: number) {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_BOUNDED_RESULT_ROWS) {
-    throw new Error("A bounded result limit between 1 and 250 is required.")
-  }
-}
-
-function createHighestRiskPreviewSql(query: HighestRiskPreviewQuery) {
-  assertBoundedLimit(query.limit)
-
-  if (query.sort !== "RISK_HIGHEST") throw new Error("Unsupported result sort.")
-
-  return `SELECT
-  CAST(catalog_source_row_id AS VARCHAR) AS row_id,
-  display_identifier AS identifier,
-  CAST(supplier_cost AS VARCHAR) AS supplier_cost,
-  CAST(selling_price AS VARCHAR) AS selling_price,
-  CAST(gross_margin_pct AS VARCHAR) AS gross_margin_percent,
-  CAST(effective_target_margin_pct AS VARCHAR) AS target_margin_percent,
-  target_source,
-  CAST(store_default_margin_pct AS VARCHAR) AS store_default_margin_percent,
-  CAST(catalog_override_margin_pct AS VARCHAR) AS catalog_override_margin_percent,
-  CAST(manual_override_margin_pct AS VARCHAR) AS manual_override_margin_percent,
-  CAST(price_for_target_margin AS VARCHAR) AS price_for_target_margin,
-  status
-FROM ${ANALYSIS_RESULTS_RELATION}
-WHERE status IN ('LOSS', 'REVIEW')
-ORDER BY
-  CASE status
-    WHEN 'LOSS' THEN 0
-    WHEN 'REVIEW' THEN 1
-    WHEN 'OK' THEN 2
-    ELSE 3
-  END,
-  gross_margin_pct ASC,
-  display_identifier ASC,
-  catalog_source_row_id ASC
-LIMIT ${query.limit};`
-}
 
 const STATUS_FILTERS = new Set(["ALL", "LOSS", "REVIEW", "OK"])
 const TARGET_SOURCE_FILTERS = new Set(["ALL", "STORE_DEFAULT", "PRODUCT_OVERRIDE"])
@@ -150,12 +108,4 @@ OFFSET ${offset};`,
   }
 }
 
-export {
-  MAX_BOUNDED_RESULT_ROWS,
-  SORT_EXPRESSIONS,
-  assertBoundedLimit,
-  createHighestRiskPreviewSql,
-  createResultsSql,
-  escapeLikeSearch,
-  validateResultsQuery,
-}
+export { SORT_EXPRESSIONS, createResultsSql, escapeLikeSearch, validateResultsQuery }
