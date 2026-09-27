@@ -8,6 +8,8 @@ import {
   useSyncExternalStore,
 } from "react"
 
+import { navigateTo } from "@/app/app-router"
+import { ROUTE_PATHS } from "@/app/site-metadata"
 import { PageContainer } from "@/components/shared/page-container"
 import { PrivacyNotice } from "@/components/shared/privacy-notice"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -42,11 +44,7 @@ import { MarginSettingsSection } from "@/features/setup/margin-settings-section"
 import { SetupReadinessSummary } from "@/features/setup/setup-readiness-summary"
 import { duckDBEngine } from "@/lib/duckdb"
 
-type SetupShellProps = {
-  onBack: () => void
-}
-
-function SetupShell({ onBack }: SetupShellProps) {
+function SetupShell() {
   const supplier = useFileInspection("supplier")
   const catalog = useFileInspection("catalog")
   const { status: authStatus, requestSignIn, signInWillReloadPage } = useAuthState()
@@ -75,7 +73,8 @@ function SetupShell({ onBack }: SetupShellProps) {
   const leaveWorkflow = async () => {
     await fileInspectionService.releaseAll()
     await duckDBEngine.dispose()
-    onBack()
+    navigateTo(ROUTE_PATHS.landing)
+    window.scrollTo({ top: 0, behavior: "auto" })
   }
 
   const supplierResult =

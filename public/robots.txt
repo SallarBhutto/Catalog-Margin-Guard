@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /check
+
+Sitemap: https://catalogmarginguard.com/sitemap.xml

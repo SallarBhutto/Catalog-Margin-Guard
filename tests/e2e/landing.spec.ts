@@ -6,10 +6,12 @@ test("landing page communicates value and opens the setup shell", async ({ page 
   await expect(
     page.getByRole("heading", { name: "Find products quietly eating your margin." }),
   ).toBeVisible()
-  await expect(page.getByRole("button", { name: "Check My Catalog" })).toBeVisible()
+  await expect(
+    page.getByRole("link", { name: "Check My Catalog", exact: true }),
+  ).toBeVisible()
   await expect(page.getByText("Files stay on your computer.").first()).toBeVisible()
 
-  await page.getByRole("button", { name: "Check My Catalog" }).click()
+  await page.getByRole("link", { name: "Check My Catalog", exact: true }).click()
 
   await expect(page).toHaveURL(/\/check$/)
   await expect(page.getByRole("heading", { name: "Check your catalog" })).toBeVisible()
@@ -24,7 +26,9 @@ test("landing page has no horizontal overflow on a mobile viewport", async ({ pa
   )
 
   expect(hasOverflow).toBe(false)
-  await expect(page.getByRole("button", { name: "Check My Catalog" })).toBeVisible()
+  await expect(
+    page.getByRole("link", { name: "Check My Catalog", exact: true }),
+  ).toBeVisible()
 })
 
 test("sign-in stays in context and explains the privacy boundary", async ({ page }) => {
