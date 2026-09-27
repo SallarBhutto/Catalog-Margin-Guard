@@ -26,6 +26,8 @@ type FileInspectionEngine = Pick<
 
 type RegisteredInput = Readonly<{
   internalName: string
+  /** Browser handle only; kept so the input can be re-registered after an engine restart. */
+  file: File
   delimiter: string | null
   columns: readonly string[] | null
 }>
@@ -305,7 +307,7 @@ class FileInspectionService {
       try {
         const expectedDelimiter = await inspectPrefixDelimiter(file, metadata.format)
         await this.engine.registerBrowserFile(internalName, file)
-        this.sessions.set(role, { internalName, delimiter: null, columns: null })
+        this.sessions.set(role, { internalName, file, delimiter: null, columns: null })
 
         const inspection = await this.engine.withConnection((connection) =>
           inspectRegisteredFile(
@@ -325,6 +327,7 @@ class FileInspectionService {
         }
         this.sessions.set(role, {
           internalName,
+          file,
           delimiter: inspection.delimiter,
           columns: inspection.columns.map((column) => column.name),
         })
@@ -342,6 +345,22 @@ class FileInspectionService {
 
   async releaseAll(): Promise<void> {
     await Promise.all([this.release("supplier"), this.release("catalog")])
+  }
+
+  /**
+   * Registers the already-inspected files with a fresh engine. Cancelling an analysis
+   * restarts the engine, which drops its file registrations; the inspection results the user
+   * confirmed are still valid, so the files are not inspected again.
+   */
+  async restoreRegisteredInputs(): Promise<void> {
+    for (const role of ["supplier", "catalog"] as const) {
+      await this.enqueue(role, async () => {
+        const registered = this.sessions.get(role)
+        if (registered) {
+          await this.engine.registerBrowserFile(registered.internalName, registered.file)
+        }
+      })
+    }
   }
 
   getRegisteredInput(role: FileRole): RegisteredInputSource | null {

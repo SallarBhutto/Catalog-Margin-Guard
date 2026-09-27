@@ -52,29 +52,111 @@ async function runAnalysis(page: Page) {
 async function chooseSelectOption(page: Page, name: string, option: string) {
   await page.getByRole("combobox", { name }).click()
   await page.getByRole("option", { name: option, exact: true }).click()
+  await expect(page.getByRole("listbox")).toBeHidden()
 }
 
 test("authenticated users browse the complete local result relation", async ({
   page,
 }) => {
   const outboundRequests: string[] = []
+  let mainFrameNavigations = 0
+  let documentRequests = 0
   page.on("request", (request) => {
     outboundRequests.push(`${request.url()}\n${request.postData() ?? ""}`)
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      documentRequests += 1
+    }
+  })
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) mainFrameNavigations += 1
   })
 
   await runAnalysis(page)
+  const activeUrl = page.url()
+  const navigationsBeforeAuth = mainFrameNavigations
+  const documentRequestsBeforeAuth = documentRequests
+  await page.evaluate(async () => {
+    const duckDBModulePath = "/src/lib/duckdb/index.ts"
+    const analysisModulePath = "/src/features/analysis/index.ts"
+    const duckDBModule: unknown = await import(/* @vite-ignore */ duckDBModulePath)
+    const analysisModule: unknown = await import(/* @vite-ignore */ analysisModulePath)
+    const { duckDBEngine } = duckDBModule as { duckDBEngine: unknown }
+    const { marginAnalysisService } = analysisModule as {
+      marginAnalysisService: { getLatestResult(): unknown }
+    }
+    ;(window as typeof window & { __activeAnalysis?: unknown }).__activeAnalysis = {
+      document,
+      duckDBEngine,
+      analysisResult: marginAnalysisService.getLatestResult(),
+    }
+  })
+  const activeAnalysisSurvived = () =>
+    page.evaluate(async () => {
+      const duckDBModulePath = "/src/lib/duckdb/index.ts"
+      const analysisModulePath = "/src/features/analysis/index.ts"
+      const inspectionModulePath =
+        "/src/features/file-inspection/file-inspection-service.ts"
+      const duckDBModule: unknown = await import(/* @vite-ignore */ duckDBModulePath)
+      const analysisModule: unknown = await import(/* @vite-ignore */ analysisModulePath)
+      const inspectionModule: unknown = await import(
+        /* @vite-ignore */ inspectionModulePath
+      )
+      const { duckDBEngine } = duckDBModule as { duckDBEngine: unknown }
+      const { marginAnalysisService } = analysisModule as {
+        marginAnalysisService: {
+          getLatestResult(): { status: string } | null
+          getSnapshot(): { state: string }
+        }
+      }
+      const { fileInspectionService } = inspectionModule as {
+        fileInspectionService: {
+          getRegisteredInput(
+            role: "supplier" | "catalog",
+          ): { internalName: string } | null
+        }
+      }
+      const active = (
+        window as typeof window & {
+          __activeAnalysis?: {
+            document: Document
+            duckDBEngine: unknown
+            analysisResult: unknown
+          }
+        }
+      ).__activeAnalysis
+      const latest = marginAnalysisService.getLatestResult()
+      return Boolean(
+        active &&
+        active.document === document &&
+        active.duckDBEngine === duckDBEngine &&
+        active.analysisResult === latest &&
+        latest?.status === "READY" &&
+        marginAnalysisService.getSnapshot().state === "ready" &&
+        fileInspectionService.getRegisteredInput("supplier")?.internalName ===
+          "supplier-input.csv" &&
+        fileInspectionService.getRegisteredInput("catalog")?.internalName ===
+          "catalog-input.csv",
+      )
+    })
   await expect(page.getByText("260 products analyzed locally")).toBeVisible()
   await expect(
-    page.getByRole("table", { name: "Highest risk products" }).getByRole("row"),
-  ).toHaveCount(21)
+    page.getByRole("table", {
+      name: "Detailed product results available after free sign-in",
+    }),
+  ).toBeVisible()
+  await expect(page.getByTestId("redacted-result-row")).toHaveCount(5)
 
-  await page.getByRole("button", { name: "See All Results — Free" }).click()
+  await page.getByRole("button", { name: "Reveal My Results — Free" }).click()
   await expect(page.getByRole("heading", { name: "Sign in free" })).toBeVisible()
   await page.getByRole("button", { name: "Complete sign in" }).click()
 
   const table = page.getByRole("table", { name: "Complete product results" })
   const rows = table.getByRole("row")
   await expect(table).toBeVisible({ timeout: 30_000 })
+  expect(page.url()).toBe(activeUrl)
+  expect(mainFrameNavigations).toBe(navigationsBeforeAuth)
+  expect(documentRequests).toBe(documentRequestsBeforeAuth)
+  expect(await activeAnalysisSurvived()).toBe(true)
   await expect(rows).toHaveCount(101)
   await expect(page.getByText("Showing 1–100 of 260")).toBeVisible()
   await expect(
@@ -184,10 +266,35 @@ test("authenticated users browse the complete local result relation", async ({
   ).not.toBeVisible()
   await expect(page.getByRole("searchbox")).not.toBeVisible()
   await expect(
-    page.getByRole("table", { name: "Highest risk products" }).getByRole("row"),
-  ).toHaveCount(21)
+    page.getByRole("table", {
+      name: "Detailed product results available after free sign-in",
+    }),
+  ).toBeVisible()
+  await expect(page.getByTestId("redacted-result-row")).toHaveCount(5)
+  const signedOutDom = await page.locator("body").evaluate((body) => body.outerHTML)
+  const signedOutAccessibility = await page.locator("body").ariaSnapshot()
+  for (const privateValue of ["SKU-00259", "SKU%_SPECIAL", "$100.00", "50.00%"]) {
+    expect(signedOutDom).not.toContain(privateValue)
+    expect(signedOutAccessibility).not.toContain(privateValue)
+  }
   await expect(page.getByText("260 products analyzed locally")).toBeVisible()
   await expect(page.getByTestId("analysis-progress")).not.toBeVisible()
+  expect(page.url()).toBe(activeUrl)
+  expect(mainFrameNavigations).toBe(navigationsBeforeAuth)
+  expect(documentRequests).toBe(documentRequestsBeforeAuth)
+  expect(await activeAnalysisSurvived()).toBe(true)
+  await expect(
+    page.getByRole("button", { name: "Reveal My Results — Free" }),
+  ).toBeVisible()
+
+  // The preserved analysis unlocks again without any reprocessing.
+  await page.getByRole("button", { name: "Reveal My Results — Free" }).click()
+  await page.getByRole("button", { name: "Complete sign in" }).click()
+  await expect(table).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText("Showing 1–100 of 260")).toBeVisible()
+  expect(page.url()).toBe(activeUrl)
+  expect(documentRequests).toBe(documentRequestsBeforeAuth)
+  expect(await activeAnalysisSurvived()).toBe(true)
 
   const outboundText = outboundRequests.join("\n")
   for (const privateValue of ["SKU-00259", "SKU%_SPECIAL", "NO-SUCH-SKU", "100.0000"]) {

@@ -1,5 +1,5 @@
-import { ClerkProvider, SignIn, UserButton, useAuth } from "@clerk/react"
-import { LockKeyhole } from "lucide-react"
+import { ClerkProvider, UserButton, useAuth, useClerk } from "@clerk/react"
+import { LockKeyhole, LogOut } from "lucide-react"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 
 import {
@@ -13,9 +13,16 @@ import { AuthStateProvider } from "@/features/auth/auth-context"
 import { resolveAuthStatus } from "@/features/auth/auth-status"
 import {
   clerkProviderAppearance,
-  clerkSignInAppearance,
+  clerkProviderLocalization,
   clerkUserButtonAppearance,
 } from "@/features/auth/clerk-appearance"
+import {
+  clerkRouterPush,
+  clerkRouterReplace,
+  createSignInModalOptions,
+  stayOnCurrentRouteAfterSignOut,
+  willSignInReloadPage,
+} from "@/features/auth/clerk-navigation"
 
 type AuthenticationProviderProps = {
   publishableKey?: string
@@ -40,22 +47,34 @@ function SignInPrivacyMessage() {
 
 function ClerkAuthBridge({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth()
-  const [isSignInOpen, setIsSignInOpen] = useState(false)
+  const clerk = useClerk()
   const status = resolveAuthStatus(isLoaded, isSignedIn)
-  const requestSignIn = useCallback(() => setIsSignInOpen(true), [])
+  // Re-evaluated on every auth-state render; Clerk refreshes its client on focus and sign-out.
+  const signInWillReloadPage = status === "anonymous" && willSignInReloadPage(clerk)
+  const requestSignIn = useCallback(() => {
+    clerk.openSignIn(createSignInModalOptions())
+  }, [clerk])
+  const signOut = useCallback(() => {
+    clerk.signOut(stayOnCurrentRouteAfterSignOut).catch(() => {
+      // The Clerk session is unchanged when sign-out is rejected; the user can retry.
+      if (import.meta.env.DEV) {
+        console.warn("[Catalog Margin Guard] Sign-out did not complete.")
+      }
+    })
+  }, [clerk])
 
   useEffect(() => {
     if (status === "authenticated") {
       // Clerk resolving a session is the external event that closes the auth surface.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsSignInOpen(false)
+      clerk.closeSignIn()
     }
-  }, [status])
+  }, [clerk, status])
 
   return (
     <AuthStateProvider
       status={status}
       requestSignIn={requestSignIn}
+      signInWillReloadPage={signInWillReloadPage}
       accountMenu={
         <UserButton
           appearance={clerkUserButtonAppearance}
@@ -63,27 +82,20 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
           fallback={
             <div className="size-10 animate-pulse rounded-md bg-surface-subtle motion-reduce:animate-none" />
           }
-        />
+        >
+          <UserButton.MenuItems>
+            <UserButton.Action label="manageAccount" />
+            {/* Replaces Clerk's built-in item (hidden via appearance), which always navigates after sign-out. */}
+            <UserButton.Action
+              label="Sign out"
+              labelIcon={<LogOut className="size-4" aria-hidden="true" />}
+              onClick={signOut}
+            />
+          </UserButton.MenuItems>
+        </UserButton>
       }
     >
       {children}
-      <Dialog open={isSignInOpen} onOpenChange={setIsSignInOpen}>
-        <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Sign in free</DialogTitle>
-            <DialogDescription>
-              Unlock complete results and tools without leaving your current workflow.
-            </DialogDescription>
-          </DialogHeader>
-          <SignInPrivacyMessage />
-          <SignIn
-            routing="hash"
-            withSignUp
-            oauthFlow="popup"
-            appearance={clerkSignInAppearance}
-          />
-        </DialogContent>
-      </Dialog>
     </AuthStateProvider>
   )
 }
@@ -122,7 +134,15 @@ function AuthenticationProvider({
   }
 
   return (
-    <ClerkProvider publishableKey={configuredKey} appearance={clerkProviderAppearance}>
+    <ClerkProvider
+      publishableKey={configuredKey}
+      appearance={clerkProviderAppearance}
+      localization={clerkProviderLocalization}
+      routerPush={clerkRouterPush}
+      routerReplace={clerkRouterReplace}
+      // Identity traffic only: no SDK usage telemetry leaves the browser.
+      telemetry={false}
+    >
       <ClerkAuthBridge>{children}</ClerkAuthBridge>
     </ClerkProvider>
   )

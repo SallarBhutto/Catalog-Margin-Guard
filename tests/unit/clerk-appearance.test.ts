@@ -1,23 +1,21 @@
 import {
   clerkProviderAppearance,
+  clerkProviderLocalization,
   clerkSignInAppearance,
 } from "@/features/auth/clerk-appearance"
 
 describe("Clerk appearance", () => {
-  it("integrates the prebuilt sign-in form into the application dialog", () => {
+  it("styles Clerk's native modal and preserves the local-data privacy message", () => {
     expect(clerkProviderAppearance.cssLayerName).toBe("clerk")
-    expect(clerkSignInAppearance.elements.header).toEqual({ display: "none" })
     expect(clerkSignInAppearance.elements.cardBox).toMatchObject({
-      border: 0,
-      borderRadius: 0,
-      boxShadow: "none",
+      width: "100%",
+      maxWidth: "28rem",
     })
-    expect(clerkSignInAppearance.elements.card).toMatchObject({
-      padding: 0,
-      border: 0,
-      borderRadius: 0,
-      background: "transparent",
-      boxShadow: "none",
-    })
+    expect(clerkProviderLocalization.signIn.start.subtitleCombined).toContain(
+      "remain on your computer and are not uploaded",
+    )
+    expect(clerkProviderLocalization.signUp.start.subtitleCombined).toContain(
+      "remain on your computer and are not uploaded",
+    )
   })
 })

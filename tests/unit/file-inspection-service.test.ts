@@ -49,6 +49,8 @@ function createServiceHarness(headers = ["Supplier SKU", "Unit Cost"]) {
   })
   const connection: DuckDBConnection = {
     query,
+    send: vi.fn(),
+    cancelSent: vi.fn(() => Promise.resolve(true)),
     close: vi.fn(() => Promise.resolve()),
     prepare: vi.fn(() =>
       Promise.resolve({ close: vi.fn(() => Promise.resolve()), query: vi.fn() }),
@@ -108,6 +110,34 @@ describe("file inspection service ownership", () => {
       "Supplier SKU",
       "Unit Cost",
     ])
+  })
+
+  it("re-registers inspected files after an engine restart without inspecting them again", async () => {
+    const harness = createServiceHarness()
+    const supplier = new File(["Supplier SKU,Unit Cost\n001234,12.50"], "supplier.csv", {
+      type: "text/csv",
+    })
+    await harness.service.inspect("supplier", supplier)
+    harness.registerBrowserFile.mockClear()
+    const queriesBefore = harness.query.mock.calls.length
+
+    await harness.service.restoreRegisteredInputs()
+
+    expect(harness.registerBrowserFile).toHaveBeenCalledTimes(1)
+    expect(harness.registerBrowserFile).toHaveBeenCalledWith(
+      "supplier-input.csv",
+      supplier,
+    )
+    expect(harness.query.mock.calls).toHaveLength(queriesBefore)
+    expect(harness.service.getRegisteredInput("supplier")?.internalName).toBe(
+      "supplier-input.csv",
+    )
+
+    // A released file is forgotten, so it is not registered again.
+    await harness.service.release("supplier")
+    harness.registerBrowserFile.mockClear()
+    await harness.service.restoreRegisteredInputs()
+    expect(harness.registerBrowserFile).not.toHaveBeenCalled()
   })
 
   it("drops a previous role registration before replacing it without touching the other role", async () => {

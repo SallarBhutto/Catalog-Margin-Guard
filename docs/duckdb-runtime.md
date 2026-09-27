@@ -13,6 +13,22 @@ This document records the Phase 4 runtime decisions. It does not define file ing
 
 The database uses DuckDB-Wasm's default in-memory session. The service does not call `open()` with a persistent path and does not use OPFS, IndexedDB, local storage, or session storage.
 
+## Asset size and hosting
+
+The modules are large: about 32.7 MiB for `duckdb-eh.wasm` and 37.5 MiB for
+`duckdb-mvp.wasm`, above the 25 MiB per-file limit of Cloudflare Pages. In production
+builds a Vite plugin replaces each with a gzip copy (`*.wasm.gz`, about 7.3 MiB and
+8.3 MiB), `renderBuiltUrl` points the bundle at those files, and
+`src/lib/duckdb/duckdb-module-source.ts` decompresses the selected module in the browser
+into a same-origin `application/wasm` blob URL that is revoked after instantiation.
+Development serves the raw modules unchanged. The build fails if any output file exceeds
+25 MiB. The generated `_headers` file marks `/assets/*` as immutable, and the worker URL
+carries the deployed policy version so a cached worker never runs under an older CSP.
+
+`restart()` terminates the worker immediately for Cancel Analysis and rejects in-flight
+operations; `reset()` remains the orderly path. Instantiation is limited to 60 seconds so
+a worker that cannot load its module surfaces the recoverable engine error.
+
 ## Versioning note
 
 DuckDB's documentation reports the current DuckDB WebAssembly client/database version as `1.5.5`. That is not a published version of the `@duckdb/duckdb-wasm` npm package. At verification time, npm's tags were:

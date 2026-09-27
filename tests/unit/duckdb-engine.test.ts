@@ -31,7 +31,13 @@ function createRuntime(
   const prepare = vi.fn(() =>
     Promise.resolve({ close: vi.fn(() => Promise.resolve()), query: vi.fn() }),
   )
-  const connection: DuckDBConnection = { close, prepare, query }
+  const connection: DuckDBConnection = {
+    close,
+    prepare,
+    query,
+    send: vi.fn(),
+    cancelSent: vi.fn(() => Promise.resolve(true)),
+  }
   const instantiate = options.instantiateError
     ? vi.fn(() => Promise.reject(options.instantiateError!))
     : vi.fn(() => Promise.resolve())
@@ -233,6 +239,129 @@ describe("DuckDB engine lifecycle", () => {
     expect(firstRuntime.terminate).toHaveBeenCalledOnce()
     expect(secondRuntime.terminate).toHaveBeenCalledOnce()
     expect(engine.getSnapshot().state).toBe("disposed")
+  })
+
+  it("restarts immediately, rejecting an operation the terminated worker will never answer", async () => {
+    const first = createRuntime()
+    const second = createRuntime()
+    const loadRuntime = vi
+      .fn()
+      .mockResolvedValueOnce(first.resources)
+      .mockResolvedValueOnce(second.resources)
+    const engine = new DuckDBEngine({ loadRuntime, logLifecycle: vi.fn() })
+    await engine.initialize()
+
+    // A terminated worker answers nothing: neither the statement nor a close request.
+    first.close.mockImplementation(() => new Promise<never>(() => undefined))
+    const started = deferred<void>()
+    const hung = engine.withConnection(() => {
+      started.resolve()
+      return new Promise<never>(() => undefined)
+    })
+    const observed = hung.catch((error: unknown) => error)
+    await started.promise
+
+    const snapshot = await engine.restart()
+
+    expect(await observed).toMatchObject({ code: "DUCKDB_ENGINE_DISPOSED" })
+    expect(first.terminate).toHaveBeenCalledOnce()
+    // Closing would queue behind the cancelled statement, so it is never requested.
+    expect(first.close).not.toHaveBeenCalled()
+    expect(snapshot.state).toBe("ready")
+    expect(loadRuntime).toHaveBeenCalledTimes(2)
+
+    await expect(engine.healthCheck()).resolves.toBe(42)
+    expect(second.query).toHaveBeenCalledWith(HEALTH_CHECK_SQL)
+    expect(second.close).toHaveBeenCalledOnce()
+  })
+
+  it("rejects an operation still waiting for its connection when restarted", async () => {
+    const first = createRuntime()
+    const second = createRuntime()
+    first.connect.mockImplementationOnce(() => new Promise<never>(() => undefined))
+    const loadRuntime = vi
+      .fn()
+      .mockResolvedValueOnce(first.resources)
+      .mockResolvedValueOnce(second.resources)
+    const engine = new DuckDBEngine({ loadRuntime, logLifecycle: vi.fn() })
+    await engine.initialize()
+
+    const operation = vi.fn(() => Promise.resolve("never"))
+    const waiting = engine.withConnection(operation).catch((error: unknown) => error)
+    await vi.waitFor(() => expect(first.connect).toHaveBeenCalledOnce())
+    await engine.restart()
+
+    expect(await waiting).toBeInstanceOf(DuckDBEngineError)
+    expect(operation).not.toHaveBeenCalled()
+  })
+
+  it("does not wait for a connection that opened on a database torn down meanwhile", async () => {
+    const first = createRuntime()
+    const second = createRuntime()
+    const connecting = deferred<DuckDBConnection>()
+    first.connect.mockImplementationOnce(() => connecting.promise)
+    first.close.mockImplementation(() => new Promise<never>(() => undefined))
+    const loadRuntime = vi
+      .fn()
+      .mockResolvedValueOnce(first.resources)
+      .mockResolvedValueOnce(second.resources)
+    const engine = new DuckDBEngine({ loadRuntime, logLifecycle: vi.fn() })
+    await engine.initialize()
+
+    const operation = vi.fn(() => Promise.resolve("stale"))
+    const late = engine.withConnection(operation).catch((error: unknown) => error)
+    await vi.waitFor(() => expect(first.connect).toHaveBeenCalledOnce())
+    await engine.reset()
+    connecting.resolve(first.connection)
+
+    expect(await late).toMatchObject({ code: "DUCKDB_ENGINE_DISPOSED" })
+    expect(operation).not.toHaveBeenCalled()
+    expect(first.close).toHaveBeenCalledOnce()
+  })
+
+  it("releases the temporary module copy after instantiation, even when it fails", async () => {
+    const releaseModule = vi.fn()
+    const runtime = createRuntime()
+    const engine = new DuckDBEngine({
+      loadRuntime: () => Promise.resolve({ ...runtime.resources, releaseModule }),
+      logLifecycle: vi.fn(),
+    })
+    await engine.initialize()
+    expect(releaseModule).toHaveBeenCalledOnce()
+
+    const failingRelease = vi.fn()
+    const failing = createRuntime({ instantiateError: new Error("bad module") })
+    const failingEngine = new DuckDBEngine({
+      loadRuntime: () =>
+        Promise.resolve({ ...failing.resources, releaseModule: failingRelease }),
+      logLifecycle: vi.fn(),
+    })
+    await expect(failingEngine.initialize()).rejects.toBeInstanceOf(DuckDBEngineError)
+    expect(failingRelease).toHaveBeenCalledOnce()
+  })
+
+  it("fails with a recoverable error when the worker never finishes instantiating", async () => {
+    const stuck = createRuntime()
+    stuck.instantiate.mockImplementation(() => new Promise<never>(() => undefined))
+    const healthy = createRuntime()
+    const loadRuntime = vi
+      .fn()
+      .mockResolvedValueOnce(stuck.resources)
+      .mockResolvedValueOnce(healthy.resources)
+    const engine = new DuckDBEngine({
+      instantiateTimeoutMs: 20,
+      loadRuntime,
+      logLifecycle: vi.fn(),
+    })
+
+    await expect(engine.initialize()).rejects.toMatchObject({
+      code: "DUCKDB_INITIALIZATION_FAILED",
+    })
+    expect(engine.getSnapshot().state).toBe("error")
+    expect(stuck.terminate).toHaveBeenCalledOnce()
+
+    // "Try again" in the interface resets the engine, which works with a healthy worker.
+    await expect(engine.reset()).resolves.toMatchObject({ state: "ready" })
   })
 
   it("maps initialization failures to a controlled application error", async () => {

@@ -13,10 +13,20 @@ type LifecycleOperation = "dispose" | "reset" | null
 type EngineListener = () => void
 type TrackedConnection = {
   connection: DuckDBConnection
+  database: DuckDBDatabase
   closed: boolean
 }
+type AbortInFlight = (error: DuckDBEngineError) => void
+
+/**
+ * DuckDB never settles `instantiate` when its worker cannot load the module (for example a
+ * blocked request), which would leave the interface preparing forever. The module itself is
+ * downloaded before this step, so the limit only covers compiling it.
+ */
+const DEFAULT_INSTANTIATE_TIMEOUT_MS = 60_000
 
 type DuckDBEngineOptions = {
+  instantiateTimeoutMs?: number
   loadRuntime?: DuckDBRuntimeLoader
   now?: () => number
   logLifecycle?: (message: string) => void
@@ -30,8 +40,8 @@ const INITIAL_SNAPSHOT: DuckDBEngineSnapshot = {
 }
 
 async function defaultRuntimeLoader() {
-  if (typeof Worker === "undefined") {
-    throw new Error("Web Workers are unavailable")
+  if (typeof Worker === "undefined" || typeof WebAssembly === "undefined") {
+    throw new DuckDBEngineError("DUCKDB_UNSUPPORTED_BROWSER")
   }
 
   const { loadDuckDBRuntime } = await import("./duckdb-runtime")
@@ -46,8 +56,10 @@ class DuckDBEngine {
   private readonly loadRuntime: DuckDBRuntimeLoader
   private readonly now: () => number
   private readonly logLifecycle: (message: string) => void
+  private readonly instantiateTimeoutMs: number
   private readonly listeners = new Set<EngineListener>()
   private readonly connections = new Set<TrackedConnection>()
+  private readonly inFlightAborts = new Set<AbortInFlight>()
 
   private snapshot: DuckDBEngineSnapshot = INITIAL_SNAPSHOT
   private database: DuckDBDatabase | null = null
@@ -61,6 +73,8 @@ class DuckDBEngine {
     this.loadRuntime = options.loadRuntime ?? defaultRuntimeLoader
     this.now = options.now ?? (() => performance.now())
     this.logLifecycle = options.logLifecycle ?? defaultLifecycleLogger
+    this.instantiateTimeoutMs =
+      options.instantiateTimeoutMs ?? DEFAULT_INSTANTIATE_TIMEOUT_MS
   }
 
   getSnapshot = (): DuckDBEngineSnapshot => this.snapshot
@@ -116,27 +130,34 @@ class DuckDBEngine {
       throw new DuckDBEngineError("DUCKDB_ENGINE_DISPOSED")
     }
 
-    let connection: DuckDBConnection
+    // Terminating the worker never settles its pending requests, so an operation that is
+    // still running when `restart()` is called is rejected here instead of hanging forever.
+    let abort!: AbortInFlight
+    const aborted = new Promise<never>((_, reject) => {
+      abort = reject
+    })
+    this.inFlightAborts.add(abort)
+    let tracked: TrackedConnection | null = null
 
     try {
-      connection = await database.connect()
-    } catch (error) {
-      throw asDuckDBEngineError(error, "DUCKDB_INITIALIZATION_FAILED")
-    }
+      let connection: DuckDBConnection
+      try {
+        connection = await Promise.race([database.connect(), aborted])
+      } catch (error) {
+        throw asDuckDBEngineError(error, "DUCKDB_INITIALIZATION_FAILED")
+      }
 
-    const tracked = { connection, closed: false }
+      tracked = { connection, database, closed: false }
 
-    if (database !== this.database || this.snapshot.state !== "ready") {
-      await this.closeConnection(tracked)
-      throw new DuckDBEngineError("DUCKDB_ENGINE_DISPOSED")
-    }
+      if (database !== this.database || this.snapshot.state !== "ready") {
+        throw new DuckDBEngineError("DUCKDB_ENGINE_DISPOSED")
+      }
 
-    this.connections.add(tracked)
-
-    try {
-      return await operation(connection)
+      this.connections.add(tracked)
+      return await Promise.race([operation(connection), aborted])
     } finally {
-      await this.closeConnection(tracked)
+      this.inFlightAborts.delete(abort)
+      if (tracked) await this.closeConnection(tracked)
     }
   }
 
@@ -208,6 +229,36 @@ class DuckDBEngine {
     return reset
   }
 
+  /**
+   * Stops whatever the worker is doing right now and starts a clean in-memory engine. Unlike
+   * `reset()`, it does not wait for open connections to close first: a close request would
+   * queue behind the statement being cancelled. In-flight operations reject with
+   * `DUCKDB_ENGINE_DISPOSED`, and every registered file and relation is gone afterwards.
+   */
+  restart(): Promise<DuckDBEngineSnapshot> {
+    if (this.lastLifecycleOperation === "reset" && this.resetPromise) {
+      return this.resetPromise
+    }
+
+    this.lastLifecycleOperation = "reset"
+    const restart = this.enqueueLifecycle(async () => {
+      await this.cleanupResources({ immediate: true })
+      this.updateSnapshot(INITIAL_SNAPSHOT)
+      this.logLifecycle("DuckDB restarted")
+      return this.initializeDirect()
+    })
+    this.resetPromise = restart
+
+    void restart
+      .finally(() => {
+        if (this.resetPromise === restart) this.resetPromise = null
+        if (this.lastLifecycleOperation === "reset") this.lastLifecycleOperation = null
+      })
+      .catch(() => undefined)
+
+    return restart
+  }
+
   dispose(): Promise<void> {
     if (this.lastLifecycleOperation === "dispose" && this.disposalPromise) {
       return this.disposalPromise
@@ -253,7 +304,21 @@ class DuckDBEngine {
     try {
       const runtime = await this.loadRuntime()
       this.database = runtime.database
-      await runtime.database.instantiate(runtime.mainModule, runtime.pthreadWorker)
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          runtime.database.instantiate(runtime.mainModule, runtime.pthreadWorker),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new DuckDBEngineError("DUCKDB_INITIALIZATION_FAILED")),
+              this.instantiateTimeoutMs,
+            )
+          }),
+        ])
+      } finally {
+        clearTimeout(timeout)
+        runtime.releaseModule?.()
+      }
 
       const initializationMs = Math.max(0, this.now() - startedAt)
       this.updateSnapshot({
@@ -286,14 +351,24 @@ class DuckDBEngine {
     return result
   }
 
-  private async cleanupResources() {
+  private async cleanupResources(options: { immediate?: boolean } = {}) {
     const database = this.database
     this.database = null
 
     const activeConnections = [...this.connections]
-    await Promise.allSettled(
-      activeConnections.map((tracked) => this.closeConnection(tracked)),
-    )
+    if (options.immediate) {
+      // The worker is about to be terminated: closing would wait behind the running
+      // statement, and nothing sent to a terminated worker is ever answered.
+      for (const tracked of activeConnections) tracked.closed = true
+      this.connections.clear()
+      const aborts = [...this.inFlightAborts]
+      this.inFlightAborts.clear()
+      for (const abort of aborts) abort(new DuckDBEngineError("DUCKDB_ENGINE_DISPOSED"))
+    } else {
+      await Promise.allSettled(
+        activeConnections.map((tracked) => this.closeConnection(tracked)),
+      )
+    }
 
     if (database) {
       try {
@@ -309,6 +384,13 @@ class DuckDBEngine {
 
     tracked.closed = true
     this.connections.delete(tracked)
+
+    if (tracked.database !== this.database) {
+      // The owning database was torn down while this connection was open. Its worker may
+      // already be terminated and would never answer, so closing must not be awaited.
+      void tracked.connection.close().catch(() => undefined)
+      return
+    }
 
     try {
       await tracked.connection.close()

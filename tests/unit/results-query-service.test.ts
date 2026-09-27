@@ -1,8 +1,6 @@
 import { ResultsQueryService } from "@/features/results/results-query-service"
 import {
   SORT_EXPRESSIONS,
-  assertBoundedLimit,
-  createHighestRiskPreviewSql,
   createResultsSql,
   escapeLikeSearch,
   validateResultsQuery,
@@ -75,26 +73,10 @@ function resultsQuery(overrides: Partial<ResultsQuery> = {}): ResultsQuery {
 }
 
 describe("bounded results query layer", () => {
-  it("keeps the anonymous preview explicitly bounded and deterministic", () => {
-    const sql = createHighestRiskPreviewSql({ limit: 20, sort: "RISK_HIGHEST" })
-
-    expect(sql).toContain("WHERE status IN ('LOSS', 'REVIEW')")
-    expect(sql).toContain("WHEN 'LOSS' THEN 0")
-    expect(sql).toContain("WHEN 'REVIEW' THEN 1")
-    expect(sql).toContain("gross_margin_pct ASC")
-    expect(sql).toContain("display_identifier ASC")
-    expect(sql).toContain("catalog_source_row_id ASC")
-    expect(sql).toContain("LIMIT 20")
-    expect(sql).not.toMatch(/SELECT\s+\*/i)
-  })
-
-  it("enforces the preview and full-page bounds in the domain layer", () => {
+  it("enforces full-page bounds in the domain layer", () => {
     expect(DEFAULT_RESULT_PAGE_SIZE).toBe(100)
     expect(RESULT_PAGE_SIZES).toEqual([50, 100, 250])
 
-    for (const value of [0, -1, 251, Number.POSITIVE_INFINITY, 1.5]) {
-      expect(() => assertBoundedLimit(value)).toThrow(/bounded result limit/i)
-    }
     for (const pageSize of RESULT_PAGE_SIZES) {
       expect(() => validateResultsQuery(resultsQuery({ pageSize }))).not.toThrow()
       expect(createResultsSql(resultsQuery({ pageSize })).rows).toContain(
@@ -175,8 +157,7 @@ describe("bounded results query layer", () => {
     })
     const service = new ResultsQueryService(
       {
-        withConnection: (operation) =>
-          operation({ prepare, query: vi.fn(() => Promise.resolve(queryResult())) }),
+        withConnection: (operation) => operation({ prepare }),
       },
       vi.fn(),
     )
@@ -224,8 +205,7 @@ describe("bounded results query layer", () => {
       })
     })
     const service = new ResultsQueryService({
-      withConnection: (operation) =>
-        operation({ prepare, query: vi.fn(() => Promise.resolve(queryResult([]))) }),
+      withConnection: (operation) => operation({ prepare }),
     })
 
     await expect(service.getResultsPage(resultsQuery({ page: 99 }))).resolves.toEqual({
@@ -235,27 +215,5 @@ describe("bounded results query layer", () => {
       pageSize: 100,
     })
     expect(preparedSql[1]).toContain("OFFSET 0")
-  })
-
-  it("continues to map the bounded anonymous preview", async () => {
-    const query = vi.fn(() => Promise.resolve(queryResult()))
-    const service = new ResultsQueryService(
-      {
-        withConnection: (operation) =>
-          operation({
-            query,
-            prepare: vi.fn(() => Promise.resolve({ close: vi.fn(), query: vi.fn() })),
-          }),
-      },
-      vi.fn(),
-    )
-
-    const result = await service.getHighestRiskPreview({
-      limit: 20,
-      sort: "RISK_HIGHEST",
-    })
-    expect(result).toHaveLength(2)
-    expect(Object.keys(result[0] ?? {})).not.toContain("match_key")
-    expect(query).toHaveBeenCalledOnce()
   })
 })

@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, CircleAlert } from "lucide-react"
+import { ArrowLeft, CheckCircle2, CircleAlert, Info } from "lucide-react"
 import {
   useEffect,
   useMemo,
@@ -8,10 +8,10 @@ import {
   useSyncExternalStore,
 } from "react"
 
-import { getBoundedPreviewLimit } from "@/app/access-policy"
 import { PageContainer } from "@/components/shared/page-container"
 import { PrivacyNotice } from "@/components/shared/privacy-notice"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import { AnalysisProgress } from "@/features/analysis/analysis-progress"
 import {
   clearMarginAnalysis,
@@ -24,14 +24,13 @@ import type {
   MarginAnalysisSuccess,
 } from "@/features/analysis/margin-analysis-types"
 import { useAuthState } from "@/features/auth/auth-context"
+import { reportExportService } from "@/features/exports/report-export-service"
 import { FileInspectionPanel } from "@/features/file-inspection/file-inspection-panel"
 import { fileInspectionService } from "@/features/file-inspection/file-inspection-service"
 import { useFileInspection } from "@/features/file-inspection/use-file-inspection"
 import { FilePicker } from "@/features/file-selection/file-picker"
 import { ResultsPage } from "@/features/results/results-page"
 import { manualOverrideService } from "@/features/results/manual-override-service"
-import { resultsQueryService } from "@/features/results/results-query-service"
-import type { MarginResultRow } from "@/features/results/results-query-types"
 import {
   analysisSetupReducer,
   createDefaultAnalysisSetupDraft,
@@ -50,7 +49,7 @@ type SetupShellProps = {
 function SetupShell({ onBack }: SetupShellProps) {
   const supplier = useFileInspection("supplier")
   const catalog = useFileInspection("catalog")
-  const { status: authStatus, capabilities } = useAuthState()
+  const { status: authStatus, requestSignIn, signInWillReloadPage } = useAuthState()
   const analysisSnapshot = useSyncExternalStore(
     marginAnalysisService.subscribe,
     marginAnalysisService.getSnapshot,
@@ -62,14 +61,15 @@ function SetupShell({ onBack }: SetupShellProps) {
     createDefaultAnalysisSetupDraft,
   )
   const [isExecuting, setIsExecuting] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
+  const [wasCancelled, setWasCancelled] = useState(false)
   const [analysisError, setAnalysisError] = useState<
     MarginAnalysisFailure["error"] | null
   >(null)
-  const [completedAnalysis, setCompletedAnalysis] = useState<{
-    result: MarginAnalysisSuccess
-    previewRows: readonly MarginResultRow[]
-  } | null>(null)
+  const [completedAnalysis, setCompletedAnalysis] =
+    useState<MarginAnalysisSuccess | null>(null)
   const workflowGeneration = useRef(0)
+  const cancellationInProgress = useRef(false)
   const lastResolvedAuthStatus = useRef<"anonymous" | "authenticated" | null>(null)
 
   const leaveWorkflow = async () => {
@@ -119,6 +119,8 @@ function SetupShell({ onBack }: SetupShellProps) {
     lastResolvedAuthStatus.current = authStatus
     if (previous !== "authenticated" || authStatus !== "anonymous") return
 
+    // A report still being prepared belongs to the signed-in state and must not download.
+    reportExportService.cancelActive()
     const generation = workflowGeneration.current
     void (async () => {
       const cleared = await manualOverrideService
@@ -133,32 +135,10 @@ function SetupShell({ onBack }: SetupShellProps) {
       if (generation !== workflowGeneration.current) return
 
       setCompletedAnalysis((current) =>
-        current
-          ? {
-              result: { ...current.result, metadata: cleared.metadata },
-              previewRows: current.previewRows,
-            }
-          : null,
-      )
-
-      const previewRows = await resultsQueryService
-        .getHighestRiskPreview({
-          limit: getBoundedPreviewLimit(capabilities),
-          sort: "RISK_HIGHEST",
-        })
-        .catch(() => null)
-      if (!previewRows || generation !== workflowGeneration.current) return
-
-      setCompletedAnalysis((current) =>
-        current
-          ? {
-              result: current.result,
-              previewRows,
-            }
-          : null,
+        current ? { ...current, metadata: cleared.metadata } : null,
       )
     })()
-  }, [authStatus, capabilities])
+  }, [authStatus])
 
   const validation = useMemo(
     () =>
@@ -170,11 +150,13 @@ function SetupShell({ onBack }: SetupShellProps) {
   )
 
   const chooseSupplierFile = (file: File) => {
+    setWasCancelled(false)
     dispatch({ type: "supplier-file-changed" })
     void supplier.chooseFile(file)
   }
 
   const chooseCatalogFile = (file: File) => {
+    setWasCancelled(false)
     dispatch({ type: "catalog-file-changed" })
     void catalog.chooseFile(file)
   }
@@ -183,40 +165,71 @@ function SetupShell({ onBack }: SetupShellProps) {
     if (!validation.isReady || !validation.configuration || isExecuting) return
 
     setAnalysisError(null)
+    setWasCancelled(false)
     setCompletedAnalysis(null)
     setIsExecuting(true)
     const generation = ++workflowGeneration.current
 
     try {
       const result = await runMarginAnalysis(validation.configuration)
+      // A cancelled or superseded run reports the aborted engine as a failure; it is neither
+      // an error to show nor a result to keep.
+      if (generation !== workflowGeneration.current) return
       if (result.status === "ERROR") {
         setAnalysisError(result.error)
         return
       }
 
-      const previewRows = await resultsQueryService.getHighestRiskPreview({
-        limit: getBoundedPreviewLimit(capabilities),
-        sort: "RISK_HIGHEST",
-      })
-      if (generation !== workflowGeneration.current) return
-      setCompletedAnalysis({ result, previewRows })
+      setCompletedAnalysis(result)
       window.scrollTo({ top: 0, behavior: "auto" })
+    } catch {
+      if (generation !== workflowGeneration.current) return
+      setAnalysisError({
+        code: "ANALYSIS_FAILED",
+        userMessage:
+          "We couldn't prepare the analysis results. Your files are still on this computer. Review your setup and try again.",
+      })
+      await clearMarginAnalysis().catch(() => undefined)
+    } finally {
+      // A cancellation keeps the progress screen until the engine is usable again; every
+      // other outcome, including a run superseded by sign-out, leaves it here.
+      if (!cancellationInProgress.current) setIsExecuting(false)
+    }
+  }
+
+  const cancelAnalysis = async () => {
+    if (!isExecuting || isCancelling) return
+    workflowGeneration.current += 1
+    cancellationInProgress.current = true
+    setIsCancelling(true)
+
+    try {
+      // Terminating the worker is the reliable way to stop a running statement. The fresh
+      // engine has no partial relations, and the inspected files are registered again so
+      // the user can analyze without choosing them a second time.
+      await duckDBEngine.restart()
+      await fileInspectionService.restoreRegisteredInputs()
+      setWasCancelled(true)
     } catch {
       setAnalysisError({
         code: "ANALYSIS_FAILED",
         userMessage:
-          "We couldn't prepare the results preview. Your files are still on this computer. Review your setup and try again.",
+          "The analysis was cancelled, but the local analysis engine could not restart. Reload the page to continue.",
       })
-      await clearMarginAnalysis().catch(() => undefined)
     } finally {
+      cancellationInProgress.current = false
       setIsExecuting(false)
+      setIsCancelling(false)
+      window.scrollTo({ top: 0, behavior: "auto" })
     }
   }
 
   const startNewScan = async () => {
     workflowGeneration.current += 1
+    reportExportService.cancelActive()
     setCompletedAnalysis(null)
     setAnalysisError(null)
+    setWasCancelled(false)
     dispatch({ type: "reset" })
     await manualOverrideService.cancelPendingAndClear().catch(() => null)
     await Promise.all([supplier.clearFile(), catalog.clearFile()])
@@ -227,14 +240,13 @@ function SetupShell({ onBack }: SetupShellProps) {
   if (completedAnalysis && validation.configuration) {
     return (
       <ResultsPage
-        result={completedAnalysis.result}
-        previewRows={completedAnalysis.previewRows}
+        result={completedAnalysis}
         currency={validation.configuration.options.currency}
         numberFormat={validation.configuration.options.numberFormat}
         onStartNewScan={startNewScan}
         onMetadataChanged={(metadata) =>
           setCompletedAnalysis((current) =>
-            current ? { ...current, result: { ...current.result, metadata } } : current,
+            current ? { ...current, metadata } : current,
           )
         }
       />
@@ -249,6 +261,8 @@ function SetupShell({ onBack }: SetupShellProps) {
             ? analysisSnapshot.stage
             : "preparing-results"
         }
+        onCancel={() => void cancelAnalysis()}
+        isCancelling={isCancelling}
       />
     )
   }
@@ -275,6 +289,28 @@ function SetupShell({ onBack }: SetupShellProps) {
           </p>
           <PrivacyNotice className="mt-4" />
         </div>
+
+        {signInWillReloadPage && (
+          <Alert variant="info" className="mt-6" data-testid="sign-in-first-notice">
+            <Info aria-hidden="true" />
+            <AlertTitle>Planning to sign in for full results? Sign in first.</AlertTitle>
+            <AlertDescription>
+              In this browser, signing in reloads the page, which clears an analysis in
+              progress. Sign in now, then choose your files. Anonymous analysis works
+              without signing in. Your files stay on your computer either way.
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  onClick={requestSignIn}
+                >
+                  Sign in free
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <section
           className="mt-8 rounded-lg border border-border bg-surface p-6 sm:p-8"
@@ -358,6 +394,16 @@ function SetupShell({ onBack }: SetupShellProps) {
               validation={validation}
               onAnalyze={() => void analyzeCatalog()}
             />
+            {wasCancelled && !analysisError && (
+              <Alert className="mt-5" role="status" data-testid="analysis-cancelled">
+                <CheckCircle2 aria-hidden="true" />
+                <AlertTitle>Analysis cancelled.</AlertTitle>
+                <AlertDescription>
+                  No results were kept. Your files and settings are still here, so you can
+                  adjust them or analyze again.
+                </AlertDescription>
+              </Alert>
+            )}
             {analysisError && (
               <Alert variant="destructive" className="mt-5">
                 <CircleAlert aria-hidden="true" />

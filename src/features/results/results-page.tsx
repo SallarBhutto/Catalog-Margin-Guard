@@ -32,17 +32,15 @@ import type {
 } from "@/features/analysis/margin-analysis-types"
 import { useAuthState } from "@/features/auth/auth-context"
 import {
+  ExportReportsSection,
+  type ReportExporter,
+} from "@/features/exports/export-reports-section"
+import {
   AuthenticatedResultsBrowser,
   type ResultsPageQueryService,
 } from "@/features/results/authenticated-results-browser"
 import type { ManualOverrideMutationService } from "@/features/results/manual-override-dialog"
-import {
-  formatCount,
-  formatMoney,
-  formatPercent,
-} from "@/features/results/results-formatting"
-import type { MarginResultRow } from "@/features/results/results-query-types"
-import { StatusBadge } from "@/features/results/status-badge"
+import { formatCount, formatPercent } from "@/features/results/results-formatting"
 import type {
   DisplayCurrency,
   NumberFormat,
@@ -51,12 +49,12 @@ import { cn } from "@/lib/utils"
 
 type ResultsPageProps = Readonly<{
   result: MarginAnalysisSuccess
-  previewRows: readonly MarginResultRow[]
   currency: DisplayCurrency
   numberFormat: NumberFormat
   onStartNewScan: () => Promise<void>
   fullResultsService?: ResultsPageQueryService
   overrideService?: ManualOverrideMutationService
+  exportService?: ReportExporter
   onMetadataChanged?: (metadata: MarginAnalysisMetadata) => void
 }>
 
@@ -202,72 +200,124 @@ function MarginExposureSection({
   )
 }
 
-function HighestRiskTable({
-  rows,
-  currency,
-  numberFormat,
+const REDACTED_ROW_WIDTHS = [
+  ["w-24", "w-16", "w-16", "w-14", "w-14", "w-16", "w-16"],
+  ["w-20", "w-14", "w-16", "w-16", "w-12", "w-14", "w-14"],
+  ["w-28", "w-16", "w-14", "w-14", "w-16", "w-16", "w-16"],
+  ["w-16", "w-14", "w-16", "w-16", "w-14", "w-14", "w-14"],
+  ["w-24", "w-16", "w-14", "w-14", "w-16", "w-16", "w-16"],
+] as const
+
+function LockedHighestRiskTable({
+  isAuthLoading,
+  signInWillReloadPage,
+  onReveal,
 }: Readonly<{
-  rows: readonly MarginResultRow[]
-  currency: DisplayCurrency
-  numberFormat: NumberFormat
+  isAuthLoading: boolean
+  signInWillReloadPage: boolean
+  onReveal: () => void
 }>) {
   return (
-    <div className="mt-4 overflow-hidden rounded-lg border border-border bg-surface">
-      <Table className="min-w-[58rem]" aria-label="Highest risk products">
-        <TableHeader>
-          <TableRow className="hover:bg-surface-subtle">
-            <TableHead>SKU</TableHead>
-            <TableHead className="text-right">Supplier Cost</TableHead>
-            <TableHead className="text-right">Selling Price</TableHead>
-            <TableHead className="text-right">Gross Margin</TableHead>
-            <TableHead className="text-right">Target Margin</TableHead>
-            <TableHead className="text-right" title="Price for Target Margin">
-              Price for Target
-              <span className="sr-only"> Margin</span>
-            </TableHead>
-            <TableHead>Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.rowId}>
-              <TableCell
-                className="max-w-64 truncate font-medium text-text-primary"
-                title={row.identifier}
+    <div
+      className="relative mt-4 min-h-96 overflow-hidden rounded-lg border border-border bg-surface"
+      data-testid="locked-results"
+    >
+      <div className="overflow-x-auto">
+        <Table
+          className="min-w-[58rem]"
+          aria-label="Detailed product results available after free sign-in"
+        >
+          <TableHeader>
+            <TableRow className="hover:bg-surface-subtle">
+              <TableHead>SKU</TableHead>
+              <TableHead className="text-right">Supplier Cost</TableHead>
+              <TableHead className="text-right">Selling Price</TableHead>
+              <TableHead className="text-right">Gross Margin</TableHead>
+              <TableHead className="text-right">Target Margin</TableHead>
+              <TableHead
+                className="text-right"
+                title="Price for Target Margin"
+                aria-label="Price for Target Margin"
               >
-                {row.identifier}
-              </TableCell>
-              <TableCell className="text-right tabular-nums text-text-secondary">
-                {formatMoney(row.supplierCost, currency, numberFormat)}
-              </TableCell>
-              <TableCell className="text-right tabular-nums text-text-secondary">
-                {formatMoney(row.sellingPrice, currency, numberFormat)}
-              </TableCell>
-              <TableCell
-                className={cn(
-                  "text-right font-medium tabular-nums",
-                  row.status === "LOSS"
-                    ? "text-loss-strong"
-                    : row.status === "REVIEW"
-                      ? "text-review-strong"
-                      : "text-text-primary",
-                )}
-              >
-                {formatPercent(row.grossMarginPercent, numberFormat)}
-              </TableCell>
-              <TableCell className="text-right tabular-nums text-text-secondary">
-                {formatPercent(row.targetMarginPercent, numberFormat)}
-              </TableCell>
-              <TableCell className="text-right tabular-nums text-text-primary">
-                {formatMoney(row.priceForTargetMargin, currency, numberFormat)}
-              </TableCell>
-              <TableCell>
-                <StatusBadge status={row.status} />
-              </TableCell>
+                Price for Target
+                <span className="sr-only"> Margin</span>
+              </TableHead>
+              <TableHead>Status</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody aria-hidden="true">
+            {REDACTED_ROW_WIDTHS.map((widths, rowIndex) => (
+              <TableRow key={rowIndex} data-testid="redacted-result-row">
+                {widths.map((width, cellIndex) => (
+                  <TableCell key={cellIndex}>
+                    <span
+                      className={cn(
+                        "block h-2.5 rounded-sm bg-border-strong/70",
+                        width,
+                        cellIndex > 0 && cellIndex < 6 && "ml-auto",
+                        cellIndex === 6 && "h-5 rounded-full bg-surface-subtle",
+                      )}
+                    />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div
+        className="pointer-events-none absolute inset-x-0 top-12 bottom-0 bg-surface/60"
+        aria-hidden="true"
+      />
+      <div className="absolute inset-x-3 top-20 bottom-5 flex items-center justify-center sm:inset-x-6">
+        <div className="w-full max-w-lg rounded-md border border-border bg-surface px-5 py-5 text-center shadow-sm sm:px-7 sm:py-6">
+          <div className="flex items-center justify-center gap-2">
+            <LockKeyhole className="size-4 text-brand" aria-hidden="true" />
+            <h3 className="text-[15px] leading-[22px] font-semibold text-text-primary">
+              Your detailed results are ready
+            </h3>
+          </div>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-[22px] text-text-secondary">
+            Your full catalog has already been analyzed locally. Sign in free to reveal
+            your highest-risk products and explore the complete report.
+          </p>
+          <Button
+            type="button"
+            size="large"
+            className="mt-4 w-full sm:w-auto"
+            onClick={onReveal}
+            disabled={isAuthLoading}
+          >
+            Reveal My Results — Free
+          </Button>
+          {isAuthLoading && (
+            <p className="mt-2 text-xs text-text-muted" role="status">
+              Checking sign-in status…
+            </p>
+          )}
+          {signInWillReloadPage && (
+            <Alert
+              variant="warning"
+              className="mt-4 text-left"
+              data-testid="sign-in-reload-warning"
+            >
+              <AlertTriangle aria-hidden="true" />
+              <AlertTitle>Signing in from this browser will reload the page.</AlertTitle>
+              <AlertDescription>
+                Your sign-in provider needs to refresh its session cookie, which clears
+                this analysis. Your files stay on your computer. To keep results, sign in
+                first with <span className="font-medium">Sign in</span> at the top of the
+                page, then choose your files and analyze again.
+              </AlertDescription>
+            </Alert>
+          )}
+          <div className="mt-3 text-xs leading-[18px] text-text-muted">
+            <p>No payment or credit card required.</p>
+            <p>Files stay on your computer.</p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -333,20 +383,24 @@ function DataQualitySection({
 
 function ResultsPage({
   result,
-  previewRows,
   currency,
   numberFormat,
   onStartNewScan,
   fullResultsService,
   overrideService,
+  exportService,
   onMetadataChanged,
 }: ResultsPageProps) {
-  const { status: authStatus, capabilities, requestSignIn } = useAuthState()
+  const {
+    status: authStatus,
+    capabilities,
+    requestSignIn,
+    signInWillReloadPage,
+  } = useAuthState()
   const [confirmNewScan, setConfirmNewScan] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const { summary } = result.metadata
   const needsAttention = summary.productsAtLoss + summary.productsNeedingReview
-  const hiddenAttention = Math.max(0, needsAttention - previewRows.length)
   const hasNoAnalyzableProducts = summary.productsAnalyzed === 0
   const hasNoAttention = needsAttention === 0 && !hasNoAnalyzableProducts
 
@@ -433,50 +487,27 @@ function ResultsPage({
               Highest Risk Products
             </h2>
             <p className="mt-1 text-sm leading-[22px] text-text-secondary">
-              Products needing attention, ordered by risk and lowest gross margin.
+              {formatCount(needsAttention, numberFormat)}{" "}
+              {needsAttention === 1 ? "product needs" : "products need"} attention. Reveal
+              the products with the highest margin risk.
             </p>
-            <HighestRiskTable
-              rows={previewRows}
-              currency={currency}
-              numberFormat={numberFormat}
+            <LockedHighestRiskTable
+              isAuthLoading={authStatus === "loading"}
+              signInWillReloadPage={signInWillReloadPage}
+              onReveal={requestSignIn}
             />
-
-            {hiddenAttention > 0 && (
-              <div className="mt-5 rounded-lg border border-brand-soft-border bg-brand-soft p-5 sm:flex sm:items-center sm:justify-between sm:gap-8 sm:p-6">
-                <div>
-                  <p className="text-[15px] font-semibold text-text-primary">
-                    Showing {formatCount(previewRows.length, numberFormat)} of{" "}
-                    {formatCount(needsAttention, numberFormat)} products needing
-                    attention.
-                  </p>
-                  <p className="mt-1 text-sm leading-[22px] text-text-secondary">
-                    {formatCount(hiddenAttention, numberFormat)} more products are hidden.
-                  </p>
-                  <p className="mt-3 flex items-center gap-2 text-xs text-text-secondary">
-                    <LockKeyhole className="size-4 text-brand" aria-hidden="true" />
-                    Signing in does not upload your catalog.
-                  </p>
-                </div>
-                <div className="mt-5 shrink-0 sm:mt-0">
-                  {authStatus === "anonymous" ? (
-                    <>
-                      <Button type="button" size="large" onClick={requestSignIn}>
-                        See All Results — Free
-                      </Button>
-                      <p className="mt-2 text-center text-xs text-text-muted">
-                        No credit card required.
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm font-medium text-text-secondary" role="status">
-                      Checking sign-in status…
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
           </section>
         ) : null}
+
+        {capabilities.canViewFullResults && !hasNoAnalyzableProducts && (
+          <ExportReportsSection
+            capabilities={capabilities}
+            productsAnalyzed={summary.productsAnalyzed}
+            productsNeedingAttention={needsAttention}
+            numberFormat={numberFormat}
+            service={exportService}
+          />
+        )}
 
         <div className="mt-8">
           <DataQualitySection

@@ -131,6 +131,14 @@ class ManualOverrideService {
     })
   }
 
+  /**
+   * Runs a reader of the analysis relation in the mutation queue: every mutation requested
+   * earlier is applied first and later ones wait, so the reader never sees a mixture.
+   */
+  runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+    return this.enqueue(operation)
+  }
+
   private async mutateRow(
     generation: number,
     rowId: string,

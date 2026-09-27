@@ -487,6 +487,10 @@ Do not retain customer data longer than required.
 
 # 14. Supported Input Formats
 
+> **First public beta scope:** the beta ships the CSV/TSV workflow only. XLSX (section 16)
+> is deferred and is not implemented; the interface accepts and advertises only CSV and
+> TSV, and selecting another format produces the unsupported-format error.
+
 v0 supports:
 
 ```text
@@ -1045,7 +1049,7 @@ React does not.
 
 - selected file metadata
 - discovered columns
-- small preview rows
+- small file-inspection preview rows
 - current mapping
 - user options
 - processing phase
@@ -1137,7 +1141,6 @@ type AccessCapabilities = {
   canPaginateFullResults: boolean
   canExportResults: boolean
   canUseManualOverrides: boolean
-  resultPreviewLimit: number | null
 }
 ```
 
@@ -1147,15 +1150,10 @@ Expose something similar to:
 getAccessCapabilities(accessState)
 ```
 
-Feature UI depends on capabilities, not Clerk internals.
-
-Keep preview limit centralized:
-
-```typescript
-export const ACCESS_LIMITS = {
-  anonymousResultPreview: 20,
-} as const
-```
+Feature UI depends on capabilities, not Clerk internals. Anonymous and unresolved auth
+states receive the safe capability set and must not initiate product-row result queries.
+The anonymous locked-table presentation is generated from static decorative geometry plus
+aggregate metadata; it does not have a customer-row limit because it receives no row DTOs.
 
 This layer should make a future `ANONYMOUS / FREE / PAID` model possible without rewriting feature components.
 
@@ -1229,9 +1227,40 @@ access capabilities change
 same local analysis is immediately queryable in full
 ```
 
+Open authentication with Clerk's supported in-context modal API
+(`useClerk().openSignIn`) rather than mounting the route-oriented `<SignIn>` component
+inside an application dialog. The modal must use popup OAuth so an external identity
+provider cannot replace the parent analysis document. Email sign-in, combined new-account
+creation, modal cancellation, and popup cancellation must all leave the current `/check`
+document and React application instance alive.
+
+Clerk navigation must use the application's client-side router integration so
+authentication does not replace the browser document containing the in-memory analysis.
+Pass the application's History API navigation to `ClerkProvider` through the supported
+`routerPush` and `routerReplace` options. Without them, clerk-js completes sign-in,
+sign-up, and sign-out by assigning `window.location.href`, which reloads the document and
+destroys DuckDB, registered files, and React state even when the URL stays `/check`.
+The router callbacks must only use `history.pushState` / `history.replaceState`, must
+treat navigation to the current URL as a no-op, and must never assign `location`.
+
+Sign-in and sign-up opened from the modal must pass the initiating location as their
+fallback redirect so Clerk's post-auth navigation resolves to the page the user is on
+rather than the `/` default. Sign-out must preserve the current route: the account menu
+signs out through `clerk.signOut(callback)`, because Clerk's built-in sign-out item always
+navigates to the static provider-level `afterSignOutUrl`. With a callback clerk-js performs
+no post-sign-out navigation, so a user with an active analysis stays on `/check` with the
+anonymous locked results and a user on `/` stays on `/`. The built-in item must be hidden
+with an appearance style object, not a utility class, because `@layer clerk` outranks
+Tailwind's `utilities` layer.
+
+The normal active-analysis path must not depend on a post-auth redirect URL. Redirect or
+fallback configuration is defensive handling for flows that cannot complete in context;
+it is not a mechanism for restoring analysis after document replacement.
+
 Do not:
 
 - reload the page
+- navigate to `/` or another application route after authentication
 - rerun raw ingestion
 - recreate analysis unnecessarily
 - ask the user to choose files again
@@ -1313,6 +1342,67 @@ The export layer must:
 - mitigate spreadsheet formula injection in user-derived text fields beginning with `=`, `+`, `-`, or `@`
 
 Keep generated numeric fields numeric-looking rather than unnecessarily prefixing them as text.
+
+## 38.1 Implemented Export Pipeline
+
+- **Source of truth.** Both reports are one `SELECT` over the materialized
+  `analysis_results` relation. Manual overrides update that relation in place with the
+  shared status and price expressions, so exports never recompute margins, targets,
+  statuses, or prices.
+- **Streaming.** The statement is sent with DuckDB-Wasm's `connection.send(sql, true)` and
+  consumed as record batches. Each batch is serialized to CSV text and folded into `Blob`
+  parts (about 4 MiB of text per part). Rows never enter React state or one large array.
+- **Consistent snapshot.** A single statement reads a single snapshot. The export runs in
+  the manual-override service's queue (`runExclusive`): target changes requested earlier
+  are applied first and later ones wait until the export finishes.
+- **Invalidation.** The export holds a cancellation token and the identity of the active
+  analysis result. Sign-out, Start New Scan, unmounting the export controls, and the
+  Cancel action invalidate it; a statement still running is cancelled with `cancelSent()`
+  and no download is triggered. A statement that fails because the analysis was cleared is
+  treated as a cancellation, not an error. Only one export runs at a time.
+- **Access.** `canExportResults` gates both the controls and the service call. This is a
+  workflow gate consistent with the rest of v0, not a security or entitlement boundary:
+  the analysis data already lives in the user's browser.
+- **Validation.** Numeric fields must match a plain decimal pattern and status/target
+  source must be known values, otherwise the export fails instead of writing a misleading
+  file. An empty result creates no file.
+- **Delivery.** The file is handed to the browser through an object URL and a temporary
+  download link; the URL is revoked afterwards. Nothing is uploaded.
+- **Memory and measured size.** Rows are streamed, but the finished report is one `Blob`
+  that the browser holds until the download has started, so memory use grows with report
+  size. The largest export measured so far is 100,000 products (about 7.2 MB, under one
+  second in headless Chromium on the development machine). Larger exports have not been
+  measured and no capacity beyond that is claimed; a browser that cannot hold the file
+  fails the export with the standard error and leaves the analysis intact.
+
+## 38.2 CSV Format
+
+- UTF-8 with a byte-order mark so spreadsheet applications detect the encoding; CRLF row
+  terminators; header row with the PRD column names.
+- Fields containing commas, quotes, CR/LF, or leading/trailing whitespace are quoted, with
+  quotes doubled (RFC 4180).
+- **Formula injection.** Only the customer-derived `identifier` is untrusted text. Following
+  the OWASP CSV Injection guidance, a field is prefixed with a single apostrophe and quoted
+  when it begins with a tab, carriage return, or line feed, or when its first significant
+  character, after skipping leading whitespace, control (Cc), and invisible format (Cf)
+  characters, is `=`, `+`, `-`, `@`, or a full-width form of those. The original characters
+  are otherwise unchanged. Generated numeric fields are never prefixed, so negative margins
+  stay numeric.
+- **Limits of that protection.** The apostrophe is part of the exported value: most
+  applications, including spreadsheet applications opening the CSV, show it as the first
+  character, and programmatic consumers must strip it to recover the original identifier.
+  OWASP notes that a spreadsheet application may remove quotes or the prefix when a CSV is
+  saved and re-opened, and that no CSV sanitization is safe for every spreadsheet
+  application and downstream consumer. The export reduces the risk at the point of
+  generation; it cannot protect a file after other tools rewrite it.
+- **Numbers.** Exact DuckDB decimals, written with `.` as the decimal separator and no
+  grouping or currency symbol, regardless of the display number format. Costs and prices
+  keep up to four decimals, the gross margin is rounded to four decimals, and trailing
+  zeros beyond two decimals are removed. As in the results table, a margin that rounds to
+  the target can still be `REVIEW`, because status uses the exact comparison.
+- Identifier text such as leading zeros is preserved in the file. A spreadsheet application
+  that opens the CSV directly may still reinterpret such values; importing the column as
+  text avoids that.
 
 ---
 
@@ -1403,6 +1493,17 @@ Do not over-engineer fine-grained SQL cancellation if worker termination provide
 Prevent stale worker responses from updating React after cancellation/reset.
 
 Use operation IDs/generation tokens if helpful.
+
+Implemented behavior: **Cancel Analysis** calls `duckDBEngine.restart()`, which terminates
+the worker immediately and starts a clean in-memory engine. DuckDB-Wasm never settles
+requests sent to a terminated worker, so the engine rejects every in-flight operation with
+`DUCKDB_ENGINE_DISPOSED` and does not wait for connections to close. The workflow
+generation token discards the cancelled run's result, no partial relations survive, the
+inspected files are registered again from their retained browser `File` handles (dropped
+on file replacement and Start New Scan), and the user returns to the setup screen with
+mappings and settings intact, without a page reload. Engine start-up is also bounded: if
+the worker never finishes instantiating, the engine reports the standard recoverable
+error instead of preparing indefinitely.
 
 ---
 
@@ -1547,7 +1648,26 @@ On constrained/mobile environments:
 
 # 47. Security Headers and CSP
 
-Cloudflare Pages static responses should use a checked-in `public/_headers` file or the current recommended equivalent.
+Cloudflare Pages static responses use a generated `_headers` file, not a checked-in one.
+
+It is generated at build time: `deployment/security-headers.ts`
+produces the `_headers` file (Cloudflare Pages / Netlify syntax) and a Vite plugin emits it
+into `dist`. It is generated because the CSP must name the Clerk Frontend API host, which
+differs per Clerk instance and is decoded from the public `VITE_CLERK_PUBLISHABLE_KEY`.
+The policy allows only the application origin, `'wasm-unsafe-eval'` for the self-hosted
+DuckDB module, inline styles required by Clerk's runtime CSS, workers from `'self'` and
+`blob:`, and the Clerk hosts Clerk documents (Frontend API, `img.clerk.com`,
+`challenges.cloudflare.com`, `*.protect.clerk.com`). Clerk SDK telemetry is disabled, so
+no telemetry host is allowed. `vite dev` and `vite preview` do not apply these headers; a
+host that does not read `_headers` needs the same values configured in its own format.
+`connect-src` also allows `blob:` so the DuckDB worker can fetch the module the page
+decompressed; blob URLs are created only by same-origin script, and `blob:` is not allowed
+for scripts. A worker runs under the policy delivered with its own script, and that script
+is cached as immutable, so the worker URL carries a build-time hash of the generated
+headers (`?policy=...`): every policy change fetches the worker again instead of reusing a
+response with the previous policy. A build in `e2e` mode is refused unless
+`CMG_ALLOW_E2E_STUB_BUILD=1` is set for local verification, and such a build is written to
+`dist-e2e`, never to the deployable `dist`.
 
 Baseline security headers should include appropriate versions of:
 
@@ -1758,10 +1878,6 @@ Centralize configurable limits/defaults.
 Examples:
 
 ```typescript
-export const ACCESS_LIMITS = {
-  anonymousResultPreview: 20,
-} as const
-
 export const FILE_LIMITS = {
   xlsxSoftBytes: 50 * 1024 * 1024,
   csvWarningBytes: 500 * 1024 * 1024,
@@ -1829,7 +1945,9 @@ At minimum:
 
 - auth loading never exposes unrestricted data
 - anonymous analysis succeeds
-- anonymous preview is bounded
+- anonymous complete summary, Margin Exposure, Data Quality, and attention count remain visible
+- anonymous locked results use synthetic rows and expose no customer row values in DOM or accessibility output
+- anonymous rendering does not query or materialize product-row result DTOs
 - anonymous full result query is blocked at UI/capability layer
 - anonymous export unavailable
 - anonymous manual override unavailable
@@ -1916,7 +2034,7 @@ optionally map product override
 analyze
 verify summary
 verify LOSS / REVIEW / OK
-verify anonymous preview gate
+verify anonymous locked-detail gate and DOM privacy
 simulate/authenticate signed-in state
 verify same analysis unlocks
 query/search/filter full results
@@ -1993,37 +2111,24 @@ A failing required quality gate must not be ignored merely because the applicati
 
 # 60. Cloudflare Pages Deployment
 
-Use Cloudflare Pages to host the Vite static build.
-
-Typical build contract:
-
-```text
-install: pnpm install --frozen-lockfile
-build:   pnpm build
-output:  dist
-```
-
-Use Cloudflare Pages Git integration for simple deployments from GitHub.
-
-Environment configuration should contain the Clerk publishable key for each environment.
-
-Do not put secrets in committed `.env` files.
-
-Provide:
-
-```text
-.env.example
-```
-
-with placeholders only.
-
-Deploy early in implementation because WASM, workers, CSP, auth, and browser isolation behavior must be validated in a real hosted environment.
+The deployment process, environment variables, preview and production behavior,
+rollback, and the free-tier constraints are specified in `docs/deployment.md`, which is
+the single source of truth. Summary: Cloudflare Pages Git integration builds `main` with
+`pnpm install --frozen-lockfile` and `pnpm build` into `dist`, served at
+`catalogmarginguard.com` (with `www` redirected to it), with `PNPM_VERSION` and
+`VITE_CLERK_PUBLISHABLE_KEY` set per environment: a Clerk development key for `pages.dev`
+previews and a Clerk production key for production, enforced by the build. The DuckDB modules ship
+gzip-compressed because Pages limits a single asset to 25 MiB, and the build fails if any
+output file exceeds that. Do not put secrets in committed `.env` files; `.env.example`
+holds placeholders only. Deploy early: WASM, workers, CSP, auth, and browser isolation
+behavior must be validated in a real hosted environment.
 
 ---
 
 # 61. Production Deployment Verification
 
-A localhost-successful implementation is not complete.
+A localhost-successful implementation is not complete. The release checklist lives in
+`docs/deployment.md` section 8; the list below is the minimum it must cover.
 
 Verify a Cloudflare preview deployment for:
 
@@ -2151,8 +2256,8 @@ Test increasingly large CSVs during this phase.
 - summary metrics
 - margin exposure buckets
 - data-quality summary
-- highest-risk result query
-- centralized anonymous preview limit
+- aggregate-derived attention count
+- synthetic locked result-table geometry with no customer row DTOs
 
 ## Phase 10 — Sign-In Unlock
 

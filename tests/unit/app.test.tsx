@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import App from "@/app/App"
+import { navigateTo, replaceRoute } from "@/app/app-router"
 import { AuthStateProvider } from "@/features/auth/auth-context"
 
 function renderAnonymousApp(requestSignIn = () => undefined) {
@@ -37,6 +38,40 @@ describe("application foundation", () => {
     expect(window.location.pathname).toBe("/check")
     expect(screen.getByRole("heading", { name: "Check your catalog" })).toBeVisible()
     expect(screen.getByText("Choose your files")).toBeVisible()
+  })
+
+  it("follows external client-side route changes without remounting the application", () => {
+    renderAnonymousApp()
+    const header = screen.getByTestId("app-header")
+
+    act(() => navigateTo("/check"))
+    expect(screen.getByRole("heading", { name: "Check your catalog" })).toBeVisible()
+    expect(screen.getByTestId("app-header")).toBe(header)
+
+    const setupHeading = screen.getByRole("heading", { name: "Check your catalog" })
+    act(() => navigateTo("/check"))
+    expect(screen.getByRole("heading", { name: "Check your catalog" })).toBe(setupHeading)
+
+    act(() => replaceRoute("/"))
+    expect(
+      screen.getByRole("heading", { name: "Find products quietly eating your margin." }),
+    ).toBeVisible()
+    expect(screen.getByTestId("app-header")).toBe(header)
+  })
+
+  it("follows browser history traversal", () => {
+    window.history.replaceState({}, "", "/check")
+    renderAnonymousApp()
+    expect(screen.getByRole("heading", { name: "Check your catalog" })).toBeVisible()
+
+    window.history.replaceState({}, "", "/")
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"))
+    })
+
+    expect(
+      screen.getByRole("heading", { name: "Find products quietly eating your margin." }),
+    ).toBeVisible()
   })
 
   it("opens authentication from the secondary header action", async () => {

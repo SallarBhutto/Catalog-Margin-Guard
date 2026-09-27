@@ -11,12 +11,19 @@ type AuthContextValue = {
   status: AuthStatus
   capabilities: AccessCapabilities
   requestSignIn: () => void
+  /**
+   * True when the identity provider has announced that completing sign-in will navigate
+   * this document (Clerk's Safari ITP cookie refresh). The current in-memory analysis
+   * would be lost, so the interface must say so before the user starts.
+   */
+  signInWillReloadPage: boolean
   accountMenu: ReactNode
 }
 
 type AuthStateProviderProps = {
   status: AuthStatus
   requestSignIn: () => void
+  signInWillReloadPage?: boolean
   accountMenu?: ReactNode
   children: ReactNode
 }
@@ -26,13 +33,14 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 function AuthStateProvider({
   status,
   requestSignIn,
+  signInWillReloadPage = false,
   accountMenu = null,
   children,
 }: AuthStateProviderProps) {
   const capabilities = getAccessCapabilities(status)
   const value = useMemo(
-    () => ({ status, capabilities, requestSignIn, accountMenu }),
-    [accountMenu, capabilities, requestSignIn, status],
+    () => ({ status, capabilities, requestSignIn, signInWillReloadPage, accountMenu }),
+    [accountMenu, capabilities, requestSignIn, signInWillReloadPage, status],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

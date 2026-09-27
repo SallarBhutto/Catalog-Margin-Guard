@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
 
+import { getCurrentPathname, navigateTo, subscribeToRoute } from "@/app/app-router"
 import { AppHeader } from "@/components/shared/app-header"
 import { AuthHeaderControl } from "@/features/auth/auth-header-control"
 import { LandingPage } from "@/features/landing/landing-page"
@@ -12,17 +13,15 @@ function getRoute(pathname: string): AppRoute {
 }
 
 function App() {
-  const [route, setRoute] = useState<AppRoute>(() => getRoute(window.location.pathname))
+  const pathname = useSyncExternalStore(
+    subscribeToRoute,
+    getCurrentPathname,
+    getCurrentPathname,
+  )
+  const route = getRoute(pathname)
 
-  useEffect(() => {
-    const handlePopState = () => setRoute(getRoute(window.location.pathname))
-    window.addEventListener("popstate", handlePopState)
-    return () => window.removeEventListener("popstate", handlePopState)
-  }, [])
-
-  const navigate = (pathname: string) => {
-    if (window.location.pathname !== pathname) window.history.pushState({}, "", pathname)
-    setRoute(getRoute(pathname))
+  const navigate = (nextPathname: string) => {
+    navigateTo(nextPathname)
     window.scrollTo({ top: 0, behavior: "auto" })
   }
 

@@ -198,6 +198,14 @@ test("manual targets recalculate one row, regroup filters, restore fallback, and
   await page.getByRole("button", { name: "Sign out" }).click()
   await expect(page.getByRole("searchbox")).not.toBeVisible()
   await expect(page.getByRole("button", { name: /target for/i })).not.toBeVisible()
+  await expect(
+    page.getByRole("table", {
+      name: "Detailed product results available after free sign-in",
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "Reveal My Results — Free" }),
+  ).toBeVisible()
   await expect(page.getByText("3 using store default")).toBeVisible()
   await expect(page.getByText("1 using product-specific target")).toBeVisible()
 

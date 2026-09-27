@@ -1,9 +1,4 @@
-import {
-  ACCESS_LIMITS,
-  getBoundedPreviewLimit,
-  getAccessCapabilities,
-  type AccessCapabilities,
-} from "@/app/access-policy"
+import { getAccessCapabilities, type AccessCapabilities } from "@/app/access-policy"
 
 const anonymousCapabilities: AccessCapabilities = {
   canViewFullResults: false,
@@ -11,7 +6,6 @@ const anonymousCapabilities: AccessCapabilities = {
   canPaginateFullResults: false,
   canExportResults: false,
   canUseManualOverrides: false,
-  resultPreviewLimit: ACCESS_LIMITS.anonymousResultPreview,
 }
 
 describe("access policy", () => {
@@ -19,10 +13,8 @@ describe("access policy", () => {
     expect(getAccessCapabilities("loading")).toEqual(anonymousCapabilities)
   })
 
-  it("limits anonymous users to the centralized result preview", () => {
-    expect(ACCESS_LIMITS.anonymousResultPreview).toBe(20)
+  it("locks product-level results for anonymous users", () => {
     expect(getAccessCapabilities("anonymous")).toEqual(anonymousCapabilities)
-    expect(getBoundedPreviewLimit(anonymousCapabilities)).toBe(20)
   })
 
   it("unlocks every v0 capability for authenticated users", () => {
@@ -33,8 +25,6 @@ describe("access policy", () => {
       canPaginateFullResults: true,
       canExportResults: true,
       canUseManualOverrides: true,
-      resultPreviewLimit: null,
     })
-    expect(getBoundedPreviewLimit(capabilities)).toBe(20)
   })
 })

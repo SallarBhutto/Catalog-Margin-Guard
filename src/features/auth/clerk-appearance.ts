@@ -17,28 +17,37 @@ const clerkProviderAppearance = {
   cssLayerName: "clerk",
 } as const
 
+const authPrivacySubtitle =
+  "Signing in only creates your Catalog Margin Guard account. Your supplier and catalog files remain on your computer and are not uploaded."
+
+const clerkProviderLocalization = {
+  signIn: {
+    start: {
+      title: "Sign in free",
+      titleCombined: "Sign in free",
+      subtitle: authPrivacySubtitle,
+      subtitleCombined: authPrivacySubtitle,
+    },
+  },
+  signUp: {
+    start: {
+      title: "Create your free account",
+      titleCombined: "Create your free account",
+      subtitle: authPrivacySubtitle,
+      subtitleCombined: authPrivacySubtitle,
+    },
+  },
+} as const
+
 const clerkSignInAppearance = {
   variables: clerkVariables,
   elements: {
-    rootBox: {
-      width: "100%",
-    },
     cardBox: {
       width: "100%",
-      border: 0,
-      borderRadius: 0,
-      boxShadow: "none",
+      maxWidth: "28rem",
     },
     card: {
       width: "100%",
-      padding: 0,
-      border: 0,
-      borderRadius: 0,
-      background: "transparent",
-      boxShadow: "none",
-    },
-    header: {
-      display: "none",
     },
     main: {
       width: "100%",
@@ -130,8 +139,20 @@ const clerkUserButtonAppearance = {
     userButtonPopoverCard: "rounded-lg border border-border bg-surface shadow-floating",
     userButtonPopoverActionButton: "min-h-10 text-text-primary hover:bg-surface-subtle",
     userButtonPopoverActionButtonText: "text-[13px] font-medium",
+    // The application supplies its own sign-out action; Clerk always appends its built-in
+    // item, which navigates away after sign-out. This must be a style object: Clerk's
+    // `@layer clerk` is declared after Tailwind's layers, so a `hidden` utility class loses.
+    userButtonPopoverActionButton__signOut: { display: "none" },
+    userButtonPopoverCustomItemButton:
+      "min-h-10 text-text-primary hover:bg-surface-subtle",
+    userButtonPopoverCustomItemButtonIconBox: "text-text-secondary",
     userButtonPopoverFooter: "hidden",
   },
 } as const
 
-export { clerkProviderAppearance, clerkSignInAppearance, clerkUserButtonAppearance }
+export {
+  clerkProviderAppearance,
+  clerkProviderLocalization,
+  clerkSignInAppearance,
+  clerkUserButtonAppearance,
+}
