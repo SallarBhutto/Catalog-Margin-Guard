@@ -33,6 +33,23 @@ function createSignInModalOptions(): SignInModalOptions {
 }
 
 /**
+ * Whether Clerk will route the post-sign-in navigation through its Frontend API
+ * `/v1/client/touch` endpoint. Clerk's prebuilt sign-in does this whenever the client
+ * reports `isEligibleForTouch()` (client cookie due to expire within eight days, its Safari
+ * ITP workaround). That is a full document navigation the router callbacks cannot
+ * intercept, so the in-memory analysis would be lost. Uses only Clerk's public client API;
+ * development instances never report eligibility.
+ */
+function willSignInReloadPage(clerk: Pick<LoadedClerk, "loaded" | "client">) {
+  if (!clerk.loaded) return false
+  try {
+    return clerk.client?.isEligibleForTouch() === true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Passed to `clerk.signOut()`. When a callback is supplied, clerk-js runs it instead of its
  * post-sign-out navigation, so the user stays on the current route and the `/check`
  * document, DuckDB engine, and analysis stay alive while access drops to anonymous.
@@ -50,5 +67,6 @@ export {
   clerkRouterReplace,
   createSignInModalOptions,
   stayOnCurrentRouteAfterSignOut,
+  willSignInReloadPage,
 }
 export type { ClerkRouterFn, SignInModalOptions }

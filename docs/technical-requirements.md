@@ -2114,8 +2114,10 @@ A failing required quality gate must not be ignored merely because the applicati
 The deployment process, environment variables, preview and production behavior,
 rollback, and the free-tier constraints are specified in `docs/deployment.md`, which is
 the single source of truth. Summary: Cloudflare Pages Git integration builds `main` with
-`pnpm install --frozen-lockfile` and `pnpm build` into `dist`, with `PNPM_VERSION` and
-`VITE_CLERK_PUBLISHABLE_KEY` set per environment. The DuckDB modules ship
+`pnpm install --frozen-lockfile` and `pnpm build` into `dist`, served at
+`catalogmarginguard.com` (with `www` redirected to it), with `PNPM_VERSION` and
+`VITE_CLERK_PUBLISHABLE_KEY` set per environment: a Clerk development key for `pages.dev`
+previews and a Clerk production key for production, enforced by the build. The DuckDB modules ship
 gzip-compressed because Pages limits a single asset to 25 MiB, and the build fails if any
 output file exceeds that. Do not put secrets in committed `.env` files; `.env.example`
 holds placeholders only. Deploy early: WASM, workers, CSP, auth, and browser isolation

@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 
 import { getCurrentPathname } from "@/app/app-router"
 import { AuthHeaderControl } from "@/features/auth/auth-header-control"
+import { useAuthState } from "@/features/auth/auth-context"
 import { AuthenticationProvider } from "@/features/auth/authentication-provider"
 import {
   clerkProviderLocalization,
@@ -35,6 +36,7 @@ const clerkMocks = vi.hoisted(() => ({
     isLoaded: true,
     isSignedIn: false,
   },
+  eligibleForTouch: false,
   providerProps: null as CapturedProviderProps | null,
   userButtonProps: null as CapturedUserButtonProps | null,
 }))
@@ -66,6 +68,8 @@ vi.mock("@clerk/react", () => {
     UserButton,
     useAuth: () => clerkMocks.auth,
     useClerk: () => ({
+      loaded: clerkMocks.auth.isLoaded,
+      client: { isEligibleForTouch: () => clerkMocks.eligibleForTouch },
       closeSignIn: clerkMocks.closeSignIn,
       openSignIn: clerkMocks.openSignIn,
       signOut: clerkMocks.signOut,
@@ -91,6 +95,7 @@ describe("authentication provider", () => {
     clerkMocks.signOut.mockClear()
     clerkMocks.providerProps = null
     clerkMocks.userButtonProps = null
+    clerkMocks.eligibleForTouch = false
   })
 
   it("keeps anonymous access available when Clerk is not configured", async () => {
@@ -230,6 +235,36 @@ describe("authentication provider", () => {
     )
     expect(screen.getByRole("button", { name: "Sign out" })).toBeVisible()
     consoleWarn.mockRestore()
+  })
+
+  it("exposes whether Clerk will reload the page on sign-in from its public client API", () => {
+    function Probe() {
+      const { signInWillReloadPage } = useAuthState()
+      return <span>{signInWillReloadPage ? "reloads" : "stays"}</span>
+    }
+    const view = render(
+      <AuthenticationProvider publishableKey="pk_test_configured">
+        <Probe />
+      </AuthenticationProvider>,
+    )
+    expect(screen.getByText("stays")).toBeInTheDocument()
+
+    clerkMocks.eligibleForTouch = true
+    view.rerender(
+      <AuthenticationProvider publishableKey="pk_test_configured">
+        <Probe />
+      </AuthenticationProvider>,
+    )
+    expect(screen.getByText("reloads")).toBeInTheDocument()
+
+    // Never reported for a signed-in user: there is no sign-in to warn about.
+    clerkMocks.auth.isSignedIn = true
+    view.rerender(
+      <AuthenticationProvider publishableKey="pk_test_configured">
+        <Probe />
+      </AuthenticationProvider>,
+    )
+    expect(screen.getByText("stays")).toBeInTheDocument()
   })
 
   it("closes the Clerk modal when its session transition authenticates", () => {

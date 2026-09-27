@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, CircleAlert } from "lucide-react"
+import { ArrowLeft, CheckCircle2, CircleAlert, Info } from "lucide-react"
 import {
   useEffect,
   useMemo,
@@ -11,6 +11,7 @@ import {
 import { PageContainer } from "@/components/shared/page-container"
 import { PrivacyNotice } from "@/components/shared/privacy-notice"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import { AnalysisProgress } from "@/features/analysis/analysis-progress"
 import {
   clearMarginAnalysis,
@@ -48,7 +49,7 @@ type SetupShellProps = {
 function SetupShell({ onBack }: SetupShellProps) {
   const supplier = useFileInspection("supplier")
   const catalog = useFileInspection("catalog")
-  const { status: authStatus } = useAuthState()
+  const { status: authStatus, requestSignIn, signInWillReloadPage } = useAuthState()
   const analysisSnapshot = useSyncExternalStore(
     marginAnalysisService.subscribe,
     marginAnalysisService.getSnapshot,
@@ -288,6 +289,28 @@ function SetupShell({ onBack }: SetupShellProps) {
           </p>
           <PrivacyNotice className="mt-4" />
         </div>
+
+        {signInWillReloadPage && (
+          <Alert variant="info" className="mt-6" data-testid="sign-in-first-notice">
+            <Info aria-hidden="true" />
+            <AlertTitle>Planning to sign in for full results? Sign in first.</AlertTitle>
+            <AlertDescription>
+              In this browser, signing in reloads the page, which clears an analysis in
+              progress. Sign in now, then choose your files. Anonymous analysis works
+              without signing in. Your files stay on your computer either way.
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  onClick={requestSignIn}
+                >
+                  Sign in free
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <section
           className="mt-8 rounded-lg border border-border bg-surface p-6 sm:p-8"

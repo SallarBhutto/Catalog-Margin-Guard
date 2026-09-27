@@ -133,6 +133,36 @@ describe("anonymous results", () => {
     expect(requestSignIn).toHaveBeenCalledOnce()
   })
 
+  it("warns before sign-in when the provider will reload the page", () => {
+    render(
+      <AuthStateProvider
+        status="anonymous"
+        requestSignIn={() => undefined}
+        signInWillReloadPage
+      >
+        <ResultsPage
+          result={result(25, 10, 4)}
+          currency="USD"
+          numberFormat="US"
+          onStartNewScan={() => Promise.resolve()}
+        />
+      </AuthStateProvider>,
+    )
+
+    const warning = screen.getByTestId("sign-in-reload-warning")
+    expect(warning).toHaveTextContent(
+      "Signing in from this browser will reload the page.",
+    )
+    expect(warning).toHaveTextContent("clears this analysis")
+    expect(warning).toHaveTextContent("sign in first")
+    expect(screen.getByRole("button", { name: "Reveal My Results — Free" })).toBeEnabled()
+  })
+
+  it("shows no reload warning by default", () => {
+    renderResults(result(25, 10, 4))
+    expect(screen.queryByTestId("sign-in-reload-warning")).not.toBeInTheDocument()
+  })
+
   it("uses singular attention-count copy", () => {
     renderResults(result(1, 0, 4))
     expect(

@@ -77,6 +77,25 @@ describe("deployment security headers", () => {
     expect(policy).not.toMatch(/(^|\s)\*(\s|;|$)/)
   })
 
+  it("derives a production Frontend API origin on the custom domain from a pk_live_ key", () => {
+    // Clerk assigns the production Frontend API host; a subdomain of the site is typical.
+    const file = createDeploymentHeaders(
+      publishableKey("live", "clerk.catalogmarginguard.com"),
+    )
+    const [policyLine = ""] = file
+      .split("\n")
+      .filter((line) => line.includes("Content-Security-Policy"))
+    expect(policyLine).toContain(
+      "script-src 'self' 'wasm-unsafe-eval' https://clerk.catalogmarginguard.com",
+    )
+    expect(policyLine).toContain(
+      "connect-src 'self' blob: https://clerk.catalogmarginguard.com",
+    )
+    expect(policyLine).not.toContain("accounts.dev")
+    expect(policyLine).not.toContain("pages.dev")
+    expect(policyLine).not.toContain("localhost")
+  })
+
   it("emits a same-origin-only policy when sign-in is not configured", () => {
     const policy = createContentSecurityPolicy(null)
     expect(policy).not.toContain("clerk")

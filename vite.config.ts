@@ -14,6 +14,7 @@ import {
   isDuckDBModuleAsset,
   type BuiltAsset,
 } from "./deployment/build-assets"
+import { checkReleasePolicy } from "./deployment/release-policy"
 import {
   createDeploymentHeaders,
   parseClerkPublishableKey,
@@ -31,14 +32,13 @@ function deploymentHeaders(mode: string): Plugin {
         "VITE_",
       ).VITE_CLERK_PUBLISHABLE_KEY
       const clerk = parseClerkPublishableKey(publishableKey)
-
-      if (!clerk) {
-        this.warn(
-          "VITE_CLERK_PUBLISHABLE_KEY is missing or invalid: this build has sign-in disabled and a CSP without Clerk.",
-        )
-      } else if (clerk.environment === "development") {
-        this.warn(
-          "This build uses a Clerk development instance (pk_test_): capped at 100 users and not meant for production workloads. See docs/deployment.md.",
+      const policy = checkReleasePolicy(clerk, {
+        CF_PAGES_BRANCH: process.env.CF_PAGES_BRANCH,
+      })
+      for (const warning of policy.warnings) this.warn(warning)
+      if (policy.errors.length > 0) {
+        throw new Error(
+          `Release policy (${policy.target} build):\n${policy.errors.join("\n")}`,
         )
       }
 

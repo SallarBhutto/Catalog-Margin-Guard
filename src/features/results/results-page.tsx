@@ -210,9 +210,11 @@ const REDACTED_ROW_WIDTHS = [
 
 function LockedHighestRiskTable({
   isAuthLoading,
+  signInWillReloadPage,
   onReveal,
 }: Readonly<{
   isAuthLoading: boolean
+  signInWillReloadPage: boolean
   onReveal: () => void
 }>) {
   return (
@@ -294,6 +296,22 @@ function LockedHighestRiskTable({
               Checking sign-in status…
             </p>
           )}
+          {signInWillReloadPage && (
+            <Alert
+              variant="warning"
+              className="mt-4 text-left"
+              data-testid="sign-in-reload-warning"
+            >
+              <AlertTriangle aria-hidden="true" />
+              <AlertTitle>Signing in from this browser will reload the page.</AlertTitle>
+              <AlertDescription>
+                Your sign-in provider needs to refresh its session cookie, which clears
+                this analysis. Your files stay on your computer. To keep results, sign in
+                first with <span className="font-medium">Sign in</span> at the top of the
+                page, then choose your files and analyze again.
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="mt-3 text-xs leading-[18px] text-text-muted">
             <p>No payment or credit card required.</p>
             <p>Files stay on your computer.</p>
@@ -373,7 +391,12 @@ function ResultsPage({
   exportService,
   onMetadataChanged,
 }: ResultsPageProps) {
-  const { status: authStatus, capabilities, requestSignIn } = useAuthState()
+  const {
+    status: authStatus,
+    capabilities,
+    requestSignIn,
+    signInWillReloadPage,
+  } = useAuthState()
   const [confirmNewScan, setConfirmNewScan] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const { summary } = result.metadata
@@ -470,6 +493,7 @@ function ResultsPage({
             </p>
             <LockedHighestRiskTable
               isAuthLoading={authStatus === "loading"}
+              signInWillReloadPage={signInWillReloadPage}
               onReveal={requestSignIn}
             />
           </section>

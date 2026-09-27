@@ -57,6 +57,11 @@ function AuthenticationProvider({ children }: AuthenticationProviderProps) {
     <AuthStateProvider
       status={isAuthenticated ? "authenticated" : "anonymous"}
       requestSignIn={requestSignIn}
+      // Simulates Clerk reporting a Safari ITP cookie refresh; only the test stub reads this.
+      signInWillReloadPage={
+        !isAuthenticated &&
+        new URLSearchParams(window.location.search).get("e2eSignInReloads") === "1"
+      }
       accountMenu={
         <Button type="button" variant="ghost" size="small" onClick={signOut}>
           Sign out

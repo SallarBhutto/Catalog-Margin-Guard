@@ -21,6 +21,7 @@ import {
   clerkRouterReplace,
   createSignInModalOptions,
   stayOnCurrentRouteAfterSignOut,
+  willSignInReloadPage,
 } from "@/features/auth/clerk-navigation"
 
 type AuthenticationProviderProps = {
@@ -48,6 +49,8 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth()
   const clerk = useClerk()
   const status = resolveAuthStatus(isLoaded, isSignedIn)
+  // Re-evaluated on every auth-state render; Clerk refreshes its client on focus and sign-out.
+  const signInWillReloadPage = status === "anonymous" && willSignInReloadPage(clerk)
   const requestSignIn = useCallback(() => {
     clerk.openSignIn(createSignInModalOptions())
   }, [clerk])
@@ -71,6 +74,7 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
     <AuthStateProvider
       status={status}
       requestSignIn={requestSignIn}
+      signInWillReloadPage={signInWillReloadPage}
       accountMenu={
         <UserButton
           appearance={clerkUserButtonAppearance}

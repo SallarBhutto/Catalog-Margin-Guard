@@ -8,8 +8,8 @@ Privacy-first, browser-local catalog margin analysis for merchants and resellers
 - Anonymous: complete local analysis, summary, margin exposure, and data quality.
 - Free sign-in (Clerk Hobby): full results with search, filters, sorting and pagination,
   session-only manual target overrides, and two CSV reports (Products To Review, Full
-  Margin Report). While the beta runs on its `pages.dev` address it uses a Clerk
-  development instance, which Clerk caps at 100 users.
+  Margin Report). Production at `catalogmarginguard.com` uses a Clerk production
+  instance on the free Hobby plan; `pages.dev` previews use the development instance.
 - Files are processed by DuckDB-Wasm inside the browser. There is no application backend,
   database, analytics, or error reporting service. The only third-party traffic is Clerk
   identity traffic, which never receives catalog data.
@@ -53,5 +53,6 @@ test stub. That mode cannot be built for production.
 Deployment, previews, environment variables, rollback, and the free-tier rules are
 documented in [docs/deployment.md](docs/deployment.md), the single source of truth for
 the release process. In short: Cloudflare Pages builds `main` from GitHub with
-`pnpm build` into `dist`; the build generates `_headers` and fails if any output file
-exceeds 25 MiB.
+`pnpm build` into `dist` and serves it at `catalogmarginguard.com`; the build generates
+`_headers`, fails if any output file exceeds 25 MiB, and fails a production build that
+does not carry a Clerk production key.
