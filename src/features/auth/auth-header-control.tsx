@@ -16,7 +16,19 @@ function AuthHeaderControl() {
     )
   }
 
-  if (status === "authenticated") return accountMenu
+  if (status === "authenticated") {
+    return (
+      <div className="flex items-center gap-2" data-testid="account-control">
+        <span
+          className="hidden text-[13px] font-medium text-text-secondary sm:inline"
+          id="account-menu-label"
+        >
+          Account
+        </span>
+        <div aria-labelledby="account-menu-label">{accountMenu}</div>
+      </div>
+    )
+  }
 
   return (
     <Button type="button" variant="ghost" size="small" onClick={requestSignIn}>

@@ -24,7 +24,7 @@ test("real DuckDB-Wasm initializes locally, returns 42, and tears down cleanly",
     requestedUrls.some((url) => url.includes("duckdb") && url.includes(".wasm")),
   ).toBe(false)
 
-  await page.getByRole("button", { name: "Check My Catalog" }).click()
+  await page.getByRole("link", { name: "Check My Catalog — Free", exact: true }).click()
 
   const readiness = page.getByTestId("engine-readiness")
   await expect(readiness).toHaveText("Local analysis is ready.", { timeout: 30_000 })
@@ -66,7 +66,7 @@ test("real DuckDB-Wasm initializes locally, returns 42, and tears down cleanly",
     page.getByRole("heading", { name: "Find products quietly eating your margin." }),
   ).toBeVisible()
 
-  await page.getByRole("button", { name: "Check My Catalog" }).click()
+  await page.getByRole("link", { name: "Check My Catalog — Free", exact: true }).click()
   await expect(page.getByTestId("engine-readiness")).toHaveText(
     "Local analysis is ready.",
     { timeout: 30_000 },
@@ -89,7 +89,7 @@ test("falls back to the MVP bundle when exception handling is unavailable", asyn
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "Check My Catalog" }).click()
+  await page.getByRole("link", { name: "Check My Catalog — Free", exact: true }).click()
 
   const readiness = page.getByTestId("engine-readiness")
   await expect(readiness).toHaveText("Local analysis is ready.", { timeout: 30_000 })

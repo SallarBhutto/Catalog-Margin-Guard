@@ -1,0 +1,13 @@
+{
+  "name": "Catalog Margin Guard",
+  "short_name": "Margin Guard",
+  "description": "Compare supplier costs with your catalog and find products that need margin review, without uploading your files.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

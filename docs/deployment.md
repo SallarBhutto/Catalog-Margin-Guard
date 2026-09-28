@@ -104,8 +104,15 @@ What the build produces beyond the bundle:
 - `vite preview` does not apply `_headers`. `vite build --mode e2e` is refused unless
   `CMG_ALLOW_E2E_STUB_BUILD=1`; that build replaces Clerk with a test stub, is written to
   `dist-e2e`, and must never be deployed.
-- No canonical `<link>`, Open Graph tags, web manifest, sitemap, or `robots.txt` exist yet.
-  They are **deferred**; when added they must use `https://catalogmarginguard.com`.
+- **Site metadata** uses the production origin `https://catalogmarginguard.com`:
+  `index.html` carries the canonical link, description, Open Graph tags (including
+  `og:site_name`, `og:url`, and a 1200×630 PNG image with its type and dimensions), and
+  Twitter card tags; the application updates the title, canonical link, and `og:url` in
+  place on every client-side route change (`src/app/site-metadata.ts`). The `public`
+  directory ships `favicon.svg`, `apple-touch-icon.png` (180×180), `og-image.png`
+  (1200×630) with the SVG sources they were rendered from, `site.webmanifest`,
+  `robots.txt` (disallows `/check`), and `sitemap.xml` listing `/`, `/privacy`, and
+  `/terms`. Regenerate the PNGs from the SVG sources when the artwork changes.
 
 ## 5. Environment variables
 
@@ -210,6 +217,18 @@ Nothing in these steps requires a paid plan on any provider.
 - Download both reports and open them.
 - Requests go only to the site and to Clerk; none contains catalog values.
 - Repeat the engine start and an analysis in Safari and Firefox.
+
+**Static files and search metadata (after each deployment)**
+
+- `/robots.txt` returns the plain-text robots rules (`text/plain`), not the application's
+  HTML; `/sitemap.xml` returns XML; `/og-image.png` returns `image/png`. A response that
+  is the SPA `index.html` means the file was not deployed or the fallback matched first.
+- The homepage response body contains the static canonical link, Open Graph and Twitter
+  metadata, and the JSON-LD `WebApplication` block, with each element present once.
+- **Google Search Console is configured separately after the production deployment and is
+  not yet set up.** Verify ownership of `https://catalogmarginguard.com`, submit the sitemap
+  URL `https://catalogmarginguard.com/sitemap.xml`, then inspect the homepage with the URL
+  Inspection tool and request indexing.
 
 ## 10. Safari / WebKit sign-in: known behavior and launch requirement
 

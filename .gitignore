@@ -10,3 +10,6 @@ test-results
 .DS_Store
 pnpm-debug.log*
 dist-e2e
+
+# Local editor/agent session configuration
+.claude/
