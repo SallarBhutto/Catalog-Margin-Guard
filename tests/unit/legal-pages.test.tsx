@@ -76,8 +76,18 @@ describe("document metadata", () => {
     )
     expect(html).toContain(`<meta property="og:url" content="${SITE_ORIGIN}/" />`)
     expect(html).toContain(
-      `<meta property="og:image" content="${SITE_ORIGIN}/og-image.svg" />`,
+      `<meta property="og:image" content="${SITE_ORIGIN}/og-image.png" />`,
     )
+    expect(html).toContain('<meta property="og:image:type" content="image/png" />')
+    expect(html).toContain('<meta property="og:image:width" content="1200" />')
+    expect(html).toContain('<meta property="og:image:height" content="630" />')
+    expect(html).toContain(
+      `<meta name="twitter:image" content="${SITE_ORIGIN}/og-image.png" />`,
+    )
+    expect(html).toContain(
+      '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />',
+    )
+    expect(html).not.toContain("og-image.svg")
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />')
     expect(html).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" />')
     expect(html).toContain('<link rel="manifest" href="/site.webmanifest" />')
@@ -99,6 +109,24 @@ describe("document metadata", () => {
     ]) {
       expect(() => readFileSync(path.join(publicDir, file))).not.toThrow()
     }
+    // PNG type and pixel size are read from the file bytes, not inferred from the name.
+    const pngSize = (file: string) => {
+      const bytes = readFileSync(path.join(publicDir, file))
+      expect([...bytes.subarray(0, 8)]).toEqual([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ])
+      return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
+    }
+    expect(pngSize("og-image.png")).toEqual({ width: 1200, height: 630 })
+    expect(pngSize("apple-touch-icon.png")).toEqual({ width: 180, height: 180 })
+    const manifest = JSON.parse(
+      readFileSync(path.join(publicDir, "site.webmanifest"), "utf8"),
+    ) as { icons: { src: string; sizes: string; type: string }[] }
+    expect(manifest.icons).toContainEqual({
+      src: "/apple-touch-icon.png",
+      sizes: "180x180",
+      type: "image/png",
+    })
     const sitemap = readFileSync(path.join(publicDir, "sitemap.xml"), "utf8")
     for (const route of ["/", "/privacy", "/terms"])
       expect(sitemap).toContain(`${SITE_ORIGIN}${route}`)

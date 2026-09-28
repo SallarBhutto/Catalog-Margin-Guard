@@ -104,8 +104,15 @@ What the build produces beyond the bundle:
 - `vite preview` does not apply `_headers`. `vite build --mode e2e` is refused unless
   `CMG_ALLOW_E2E_STUB_BUILD=1`; that build replaces Clerk with a test stub, is written to
   `dist-e2e`, and must never be deployed.
-- No canonical `<link>`, Open Graph tags, web manifest, sitemap, or `robots.txt` exist yet.
-  They are **deferred**; when added they must use `https://catalogmarginguard.com`.
+- **Site metadata** uses the production origin `https://catalogmarginguard.com`:
+  `index.html` carries the canonical link, description, Open Graph tags (including
+  `og:site_name`, `og:url`, and a 1200×630 PNG image with its type and dimensions), and
+  Twitter card tags; the application updates the title, canonical link, and `og:url` in
+  place on every client-side route change (`src/app/site-metadata.ts`). The `public`
+  directory ships `favicon.svg`, `apple-touch-icon.png` (180×180), `og-image.png`
+  (1200×630) with the SVG sources they were rendered from, `site.webmanifest`,
+  `robots.txt` (disallows `/check`), and `sitemap.xml` listing `/`, `/privacy`, and
+  `/terms`. Regenerate the PNGs from the SVG sources when the artwork changes.
 
 ## 5. Environment variables
 

@@ -52,8 +52,8 @@ describe("application foundation", () => {
     expect(pushState).toHaveBeenCalledOnce()
     expect(screen.getByRole("heading", { name: "Check your catalog" })).toBeVisible()
     expect(document.title).toBe(DOCUMENT_TITLES.setup)
-    // The workflow route has no marketing footer.
-    expect(screen.queryByTestId("site-footer")).not.toBeInTheDocument()
+    // Privacy, Terms, and Support stay reachable during the workflow.
+    expect(screen.getByTestId("site-footer")).toBeInTheDocument()
     pushState.mockRestore()
   })
 
@@ -136,6 +136,56 @@ describe("application foundation", () => {
       within(control).getByRole("button", { name: "Open account menu" }),
     ).toBeVisible()
     expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument()
+  })
+
+  it("updates the canonical link and og:url in place on every route change", () => {
+    // index.html ships the homepage values; the test document starts with them too.
+    document.head.innerHTML =
+      '<link rel="canonical" href="https://catalogmarginguard.com/" />' +
+      '<meta property="og:url" content="https://catalogmarginguard.com/" />'
+    const canonical = () => document.head.querySelectorAll('link[rel="canonical"]')
+    const ogUrl = () => document.head.querySelectorAll('meta[property="og:url"]')
+
+    renderApp()
+    expect(canonical()[0]).toHaveAttribute("href", "https://catalogmarginguard.com/")
+
+    for (const [path, expected] of [
+      ["/check", "https://catalogmarginguard.com/check"],
+      ["/privacy", "https://catalogmarginguard.com/privacy"],
+      ["/terms", "https://catalogmarginguard.com/terms"],
+      ["/", "https://catalogmarginguard.com/"],
+      ["/privacy", "https://catalogmarginguard.com/privacy"],
+    ] as const) {
+      act(() => navigateTo(path))
+      expect(canonical()).toHaveLength(1)
+      expect(ogUrl()).toHaveLength(1)
+      expect(canonical()[0]).toHaveAttribute("href", expected)
+      expect(ogUrl()[0]).toHaveAttribute("content", expected)
+    }
+    expect(document.title).toBe(DOCUMENT_TITLES.privacy)
+  })
+
+  it("creates the canonical link and og:url once when rendering a route directly", () => {
+    document.head.innerHTML = ""
+    window.history.replaceState({}, "", "/terms")
+
+    const view = renderApp()
+    view.rerender(
+      <AuthStateProvider status="anonymous" requestSignIn={() => undefined}>
+        <App />
+      </AuthStateProvider>,
+    )
+
+    expect(document.head.querySelectorAll('link[rel="canonical"]')).toHaveLength(1)
+    expect(document.head.querySelectorAll('meta[property="og:url"]')).toHaveLength(1)
+    expect(document.head.querySelector('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      "https://catalogmarginguard.com/terms",
+    )
+    expect(document.head.querySelector('meta[property="og:url"]')).toHaveAttribute(
+      "content",
+      "https://catalogmarginguard.com/terms",
+    )
   })
 
   it("follows external client-side route changes without remounting the application", () => {

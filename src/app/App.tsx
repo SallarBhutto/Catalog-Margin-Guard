@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react"
 
 import { getCurrentPathname, subscribeToRoute } from "@/app/app-router"
-import { DOCUMENT_TITLES, getRoute } from "@/app/site-metadata"
+import { applyRouteMetadata, getRoute } from "@/app/site-metadata"
 import { AppHeader } from "@/components/shared/app-header"
 import { SiteFooter } from "@/components/shared/site-footer"
 import { AuthHeaderControl } from "@/features/auth/auth-header-control"
@@ -19,7 +19,7 @@ function App() {
   const route = getRoute(pathname)
 
   useEffect(() => {
-    document.title = DOCUMENT_TITLES[route]
+    applyRouteMetadata(route)
   }, [route])
 
   return (
@@ -42,7 +42,7 @@ function App() {
           <LandingPage />
         )}
       </div>
-      {route !== "setup" && <SiteFooter />}
+      <SiteFooter />
     </div>
   )
 }

@@ -18,7 +18,56 @@ test("direct visits to /privacy, /terms, and /check render the right page with t
   await page.goto("/check")
   await expect(page.getByRole("heading", { name: "Check your catalog" })).toBeVisible()
   await expect(page).toHaveTitle("Check your catalog — Catalog Margin Guard")
-  await expect(page.getByTestId("site-footer")).toHaveCount(0)
+  // The footer follows the workflow so Privacy, Terms, and Support stay reachable.
+  const footer = page.getByTestId("site-footer")
+  await expect(footer).toBeAttached()
+  await footer.scrollIntoViewIfNeeded()
+  await expect(footer.getByRole("link", { name: "Privacy Policy" })).toBeVisible()
+  await expect(footer.getByRole("link", { name: "Support" })).toBeVisible()
+  expect(await footer.evaluate((element) => getComputedStyle(element).position)).not.toBe(
+    "sticky",
+  )
+})
+
+test("canonical link and og:url follow client-side navigation without duplicates", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const read = () =>
+    page.evaluate(() => ({
+      canonical: [...document.head.querySelectorAll('link[rel="canonical"]')].map((l) =>
+        l.getAttribute("href"),
+      ),
+      ogUrl: [...document.head.querySelectorAll('meta[property="og:url"]')].map((m) =>
+        m.getAttribute("content"),
+      ),
+    }))
+  expect(await read()).toEqual({
+    canonical: ["https://catalogmarginguard.com/"],
+    ogUrl: ["https://catalogmarginguard.com/"],
+  })
+  await page
+    .getByTestId("app-header")
+    .getByRole("navigation", { name: "Site" })
+    .getByRole("link", { name: "Privacy" })
+    .click()
+  await expect(page).toHaveURL(/\/privacy$/)
+  expect(await read()).toEqual({
+    canonical: ["https://catalogmarginguard.com/privacy"],
+    ogUrl: ["https://catalogmarginguard.com/privacy"],
+  })
+  await page.getByTestId("site-footer").getByRole("link", { name: "Terms" }).click()
+  await page.goBack()
+  await expect(page).toHaveURL(/\/privacy$/)
+  expect(await read()).toEqual({
+    canonical: ["https://catalogmarginguard.com/privacy"],
+    ogUrl: ["https://catalogmarginguard.com/privacy"],
+  })
+  await page.goto("/check")
+  expect(await read()).toEqual({
+    canonical: ["https://catalogmarginguard.com/check"],
+    ogUrl: ["https://catalogmarginguard.com/check"],
+  })
 })
 
 test("header and footer navigation stay client-side and keep accessible names", async ({
@@ -83,10 +132,13 @@ test("header and footer navigation stay client-side and keep accessible names", 
 test("public shell fits desktop and mobile widths without overflow", async ({ page }) => {
   for (const [width, path] of [
     [1440, "/"],
+    [1440, "/check"],
     [1024, "/privacy"],
     [768, "/terms"],
+    [768, "/check"],
     [390, "/"],
     [390, "/privacy"],
+    [390, "/check"],
   ] as const) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto(path)
@@ -100,7 +152,18 @@ test("public shell fits desktop and mobile widths without overflow", async ({ pa
       .getByRole("navigation", { name: "Site" })
     if (width >= 768) await expect(desktopNav).toBeVisible()
     else await expect(desktopNav).toBeHidden()
-    await expect(page.getByTestId("site-footer")).toBeVisible()
+    const footer = page.getByTestId("site-footer")
+    await footer.scrollIntoViewIfNeeded()
+    await expect(footer).toBeVisible()
+    if (path === "/check") {
+      // The footer must come after the workflow content, never overlap it.
+      const [mainBottom, footerTop] = await page.evaluate(() => [
+        document.querySelector("#main-content")!.getBoundingClientRect().bottom,
+        document.querySelector('[data-testid="site-footer"]')!.getBoundingClientRect()
+          .top,
+      ])
+      expect(footerTop).toBeGreaterThanOrEqual(mainBottom)
+    }
     if (process.env.VISUAL_QA_DIR) {
       await page.screenshot({
         path: `${process.env.VISUAL_QA_DIR}/shell-${width}${path.replace("/", "-") || "-home"}.png`,
