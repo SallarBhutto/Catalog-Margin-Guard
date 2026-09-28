@@ -47,9 +47,8 @@ test("canonical link and og:url follow client-side navigation without duplicates
     ogUrl: ["https://catalogmarginguard.com/"],
   })
   await page
-    .getByTestId("app-header")
-    .getByRole("navigation", { name: "Site" })
-    .getByRole("link", { name: "Privacy" })
+    .getByTestId("site-footer")
+    .getByRole("link", { name: "Privacy Policy" })
     .click()
   await expect(page).toHaveURL(/\/privacy$/)
   expect(await read()).toEqual({
@@ -83,50 +82,54 @@ test("header and footer navigation stay client-side and keep accessible names", 
   await expect(page).toHaveTitle(/Find products quietly eating your margin/)
   const afterLoad = documentRequests
   const header = page.getByTestId("app-header")
-  const nav = header.getByRole("navigation", { name: "Site" })
+  const footer = page.getByTestId("site-footer")
 
+  // The header holds only the brand link and the account control.
   await expect(
     header.getByRole("link", { name: "Catalog Margin Guard home" }),
   ).toBeVisible()
-  await nav.getByRole("link", { name: "Privacy" }).click()
+  await expect(header.getByRole("navigation")).toHaveCount(0)
+  await expect(header.getByRole("link")).toHaveCount(1)
+  for (const removed of ["How it works", "Privacy", "Check my catalog"]) {
+    await expect(header.getByRole("link", { name: removed })).toHaveCount(0)
+  }
+
+  await page.getByRole("link", { name: "Check My Catalog — Free", exact: true }).click()
+  await expect(page).toHaveURL(/\/check$/)
+  await expect(page.getByRole("heading", { name: "Check your catalog" })).toBeVisible()
+
+  await footer.getByRole("link", { name: "Privacy Policy" }).click()
   await expect(page).toHaveURL(/\/privacy$/)
   await expect(page.getByRole("heading", { name: "Privacy Policy" })).toBeVisible()
-  await expect(nav.getByRole("link", { name: "Privacy" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  )
 
-  await page.getByTestId("site-footer").getByRole("link", { name: "Terms" }).click()
+  await footer.getByRole("link", { name: "Terms" }).click()
   await expect(page).toHaveURL(/\/terms$/)
   await expect(page.getByRole("heading", { name: "Terms of Service" })).toBeVisible()
 
-  await nav.getByRole("link", { name: "Check my catalog" }).click()
-  await expect(page).toHaveURL(/\/check$/)
-  await expect(page.getByRole("heading", { name: "Check your catalog" })).toBeVisible()
-  await expect(nav.getByRole("link", { name: "Check my catalog" })).toHaveCount(0)
-
   await header.getByRole("link", { name: "Catalog Margin Guard home" }).click()
   await expect(page).toHaveURL(/\/$/)
-  await nav.getByRole("link", { name: "How it works" }).click()
   await expect(
-    page.getByRole("heading", { name: "From two files to a focused review." }),
-  ).toBeInViewport()
+    page.getByRole("heading", { name: "Find products quietly eating your margin." }),
+  ).toBeVisible()
 
   expect(documentRequests).toBe(afterLoad)
-  await expect(
-    page.getByTestId("site-footer").getByRole("link", { name: "Support" }),
-  ).toHaveAttribute("href", "mailto:support@catalogmarginguard.com")
+  await expect(footer.getByRole("link", { name: "Support" })).toHaveAttribute(
+    "href",
+    "mailto:support@catalogmarginguard.com",
+  )
 
-  // Keyboard: from the skip link, Tab walks the header in reading order.
+  // Keyboard: skip link, brand link, then the account control, then page content.
   await page.getByRole("link", { name: "Skip to main content" }).focus()
   await page.keyboard.press("Tab")
   await expect(
     header.getByRole("link", { name: "Catalog Margin Guard home" }),
   ).toBeFocused()
   await page.keyboard.press("Tab")
-  await expect(nav.getByRole("link", { name: "How it works" })).toBeFocused()
+  await expect(header.getByRole("button", { name: "Sign in" })).toBeFocused()
   await page.keyboard.press("Tab")
-  await expect(nav.getByRole("link", { name: "Privacy" })).toBeFocused()
+  await expect(
+    page.getByRole("link", { name: "Check My Catalog — Free", exact: true }),
+  ).toBeFocused()
 })
 
 test("public shell fits desktop and mobile widths without overflow", async ({ page }) => {
@@ -147,11 +150,11 @@ test("public shell fits desktop and mobile widths without overflow", async ({ pa
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
       ),
     ).toBe(false)
-    const desktopNav = page
-      .getByTestId("app-header")
-      .getByRole("navigation", { name: "Site" })
-    if (width >= 768) await expect(desktopNav).toBeVisible()
-    else await expect(desktopNav).toBeHidden()
+    const header = page.getByTestId("app-header")
+    await expect(
+      header.getByRole("link", { name: "Catalog Margin Guard home" }),
+    ).toBeVisible()
+    await expect(header.getByRole("navigation")).toHaveCount(0)
     const footer = page.getByTestId("site-footer")
     await footer.scrollIntoViewIfNeeded()
     await expect(footer).toBeVisible()

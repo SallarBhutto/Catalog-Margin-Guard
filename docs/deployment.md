@@ -218,6 +218,18 @@ Nothing in these steps requires a paid plan on any provider.
 - Requests go only to the site and to Clerk; none contains catalog values.
 - Repeat the engine start and an analysis in Safari and Firefox.
 
+**Static files and search metadata (after each deployment)**
+
+- `/robots.txt` returns the plain-text robots rules (`text/plain`), not the application's
+  HTML; `/sitemap.xml` returns XML; `/og-image.png` returns `image/png`. A response that
+  is the SPA `index.html` means the file was not deployed or the fallback matched first.
+- The homepage response body contains the static canonical link, Open Graph and Twitter
+  metadata, and the JSON-LD `WebApplication` block, with each element present once.
+- **Google Search Console is configured separately after the production deployment and is
+  not yet set up.** Verify ownership of `https://catalogmarginguard.com`, submit the sitemap
+  URL `https://catalogmarginguard.com/sitemap.xml`, then inspect the homepage with the URL
+  Inspection tool and request indexing.
+
 ## 10. Safari / WebKit sign-in: known behavior and launch requirement
 
 Clerk's prebuilt sign-in decorates its post-sign-in destination with `decorateUrl`, which

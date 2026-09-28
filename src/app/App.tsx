@@ -30,7 +30,7 @@ function App() {
       >
         Skip to main content
       </a>
-      <AppHeader currentPathname={pathname} accountControl={<AuthHeaderControl />} />
+      <AppHeader accountControl={<AuthHeaderControl />} />
       <div className="flex-1">
         {route === "setup" ? (
           <SetupShell />

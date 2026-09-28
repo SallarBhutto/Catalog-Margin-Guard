@@ -94,7 +94,60 @@ describe("document metadata", () => {
     expect(html).toMatch(
       /<title>Catalog Margin Guard — Find products quietly eating your margin<\/title>/,
     )
+    expect(html).toMatch(
+      /<meta\s+name="description"\s+content="[^"]*supplier costs[^"]*catalog prices[^"]*margin analysis[^"]*"/i,
+    )
+    expect(html).toContain(
+      '<meta name="robots" content="index, follow, max-image-preview:large" />',
+    )
+    expect(html).toMatch(/<meta\s+property="og:image:alt"\s+content="[^"]+"/)
+    expect(html).toMatch(/<meta\s+name="twitter:image:alt"\s+content="[^"]+"/)
+    expect(html).not.toMatch(/name="keywords"/)
     expect(html).not.toMatch(/localhost|pages\.dev/)
+
+    // No metadata element is declared twice.
+    const counts = new Map<string, number>()
+    for (const match of html.matchAll(
+      /<(?:meta|link)\s+(?:name|property|rel)="([^"]+)"/g,
+    )) {
+      counts.set(match[1] ?? "", (counts.get(match[1] ?? "") ?? 0) + 1)
+    }
+    const duplicates = [...counts].filter(([, count]) => count > 1).map(([name]) => name)
+    expect(duplicates).toEqual([])
+  })
+
+  it("describes the application with valid, substantiated JSON-LD", () => {
+    const blocks = [
+      ...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ]
+    expect(blocks).toHaveLength(1)
+    const data = JSON.parse(blocks[0]?.[1] ?? "") as Record<string, unknown>
+
+    expect(data).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      name: "Catalog Margin Guard",
+      url: "https://catalogmarginguard.com/",
+      applicationCategory: "BusinessApplication",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    })
+    expect(data.description).toMatch(/supplier costs/)
+    expect(data.description).toMatch(/catalog/)
+    expect(data.description).toMatch(/margin/)
+    expect(typeof data.operatingSystem).toBe("string")
+    expect(typeof data.browserRequirements).toBe("string")
+    for (const unsupported of [
+      "aggregateRating",
+      "review",
+      "reviews",
+      "award",
+      "author",
+      "publisher",
+      "creator",
+      "interactionStatistic",
+    ]) {
+      expect(data).not.toHaveProperty(unsupported)
+    }
   })
 
   it("ships the static assets the metadata references", () => {

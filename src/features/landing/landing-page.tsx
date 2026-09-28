@@ -46,7 +46,7 @@ function LandingPage() {
                     href={ROUTE_PATHS.setup}
                     className="focus-visible:ring-offset-0"
                   >
-                    Check My Catalog
+                    Check My Catalog — Free
                     <ArrowRight aria-hidden="true" />
                   </AppLink>
                 </Button>

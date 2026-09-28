@@ -32,7 +32,7 @@ describe("application foundation", () => {
     expect(
       screen.getByRole("heading", { name: "Find products quietly eating your margin." }),
     ).toBeVisible()
-    expect(screen.getByRole("link", { name: "Check My Catalog" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Check My Catalog — Free" })).toHaveAttribute(
       "href",
       "/check",
     )
@@ -46,7 +46,7 @@ describe("application foundation", () => {
     const pushState = vi.spyOn(window.history, "pushState")
     renderApp()
 
-    await user.click(screen.getByRole("link", { name: "Check My Catalog" }))
+    await user.click(screen.getByRole("link", { name: "Check My Catalog — Free" }))
 
     expect(window.location.pathname).toBe("/check")
     expect(pushState).toHaveBeenCalledOnce()
@@ -75,25 +75,20 @@ describe("application foundation", () => {
     expect(document.title).toBe(DOCUMENT_TITLES.terms)
   })
 
-  it("renders the header navigation and the footer links on public routes", () => {
+  it("keeps the header to the brand link and account control, with legal links in the footer", () => {
     renderApp()
     const header = screen.getByTestId("app-header")
-    const siteNav = within(header).getByRole("navigation", { name: "Site" })
 
     expect(
       within(header).getByRole("link", { name: "Catalog Margin Guard home" }),
     ).toHaveAttribute("href", "/")
-    expect(within(siteNav).getByRole("link", { name: "How it works" })).toHaveAttribute(
-      "href",
-      "/#how-it-works",
-    )
-    expect(within(siteNav).getByRole("link", { name: "Privacy" })).toHaveAttribute(
-      "href",
-      "/privacy",
-    )
-    expect(
-      within(siteNav).getByRole("link", { name: "Check my catalog" }),
-    ).toHaveAttribute("href", "/check")
+    expect(within(header).queryByRole("navigation")).not.toBeInTheDocument()
+    expect(within(header).getAllByRole("link")).toHaveLength(1)
+    for (const removed of ["How it works", "Privacy", "Check my catalog"]) {
+      expect(
+        within(header).queryByRole("link", { name: removed }),
+      ).not.toBeInTheDocument()
+    }
 
     const footer = screen.getByTestId("site-footer")
     const legal = within(footer).getByRole("navigation", { name: "Legal and support" })
@@ -114,18 +109,6 @@ describe("application foundation", () => {
     expect(
       within(footer).queryByRole("link", { name: /twitter|linkedin|facebook|x\.com/i }),
     ).not.toBeInTheDocument()
-  })
-
-  it("hides the Check my catalog navigation entry on the workflow itself", () => {
-    window.history.replaceState({}, "", "/check")
-    renderApp()
-    const siteNav = within(screen.getByTestId("app-header")).getByRole("navigation", {
-      name: "Site",
-    })
-    expect(
-      within(siteNav).queryByRole("link", { name: "Check my catalog" }),
-    ).not.toBeInTheDocument()
-    expect(within(siteNav).getByRole("link", { name: "Privacy" })).toBeVisible()
   })
 
   it("labels the signed-in account control", () => {
